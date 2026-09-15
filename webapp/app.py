@@ -120,17 +120,18 @@ def dashboard_data():
 
     try:
         fetched = leader_dashboard_client.fetch_reports(phone)
-        sheets_client.set_cache_row(
+        # set_cache_row가 방금 쓴 갱신시각을 그대로 돌려주므로, 굳이 시트를 다시
+        # 읽어서 확인할 필요가 없다 (구글시트 읽기 쿼터를 아끼기 위함).
+        updated_at = sheets_client.set_cache_row(
             fetched["admin"]["group_name"], fetched["missing_text"], fetched["tag_text"]
         )
-        cache_row = sheets_client.get_cache_row(team)
         return jsonify(
             ok=True,
             missing_sections=leader_dashboard_client.missing_report_sections(
                 fetched["report"], fetched.get("overrides")
             ),
             tag_text=fetched["tag_text"],
-            last_updated=format_kst_timestamp(cache_row["갱신시각"]) if cache_row else "",
+            last_updated=format_kst_timestamp(updated_at),
         )
     except leader_dashboard_client.DashboardLoginError as e:
         error = str(e)

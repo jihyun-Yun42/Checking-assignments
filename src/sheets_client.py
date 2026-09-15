@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time as _time
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -39,8 +40,14 @@ def _spreadsheet():
     return _ss
 
 
+_main_ws = None
+
+
 def _worksheet():
-    return _spreadsheet().sheet1
+    global _main_ws
+    if _main_ws is None:
+        _main_ws = _spreadsheet().sheet1
+    return _main_ws
 
 
 # worksheet() 호출은 매번 구글시트 API 읽기 요청을 1회 쓴다(fetch_sheet_metadata).
@@ -55,6 +62,35 @@ def _cached_worksheet(name):
     if name not in _ws_cache:
         _ws_cache[name] = _spreadsheet().worksheet(name)
     return _ws_cache[name]
+
+
+# --- 임시 TTL 캐시 (2026-09, 구글시트 분당 읽기 쿼터 초과 임시 대응용) ---
+# 동시에 여러 조장이 새로고침하면 이 데이터들을 매번 새로 읽는 것만으로도
+# 쿼터(분당 60회)를 넘겨서 500 에러가 났다. 짧은 시간(기본 25초) 동안은
+# 프로세스 메모리에 캐시해두고 재사용한다. 표시이름(이름 변경)은 사용자가
+# 바로 반영되는 걸 확인하는 기능이라 이 캐시 대상에서 일부러 제외했다.
+# TODO: 구글 클라우드 쿼터 증설이 승인되거나 더 나은 구조로 바뀌면 이 캐시는 재검토/제거할 것.
+_TTL_SECONDS = 25
+
+_members_cache = {"data": None, "ts": 0.0}
+_cohorts_cache = {"data": None, "ts": 0.0}
+_cache_rows_cache = {"data": None, "ts": 0.0}
+
+
+def _ttl_get(cache):
+    if cache["data"] is not None and (_time.time() - cache["ts"]) < _TTL_SECONDS:
+        return cache["data"]
+    return None
+
+
+def _ttl_set(cache, data):
+    cache["data"] = data
+    cache["ts"] = _time.time()
+
+
+def _ttl_invalidate(cache):
+    cache["data"] = None
+    cache["ts"] = 0.0
 
 
 def _get_or_create_worksheet(name, header):
@@ -95,12 +131,16 @@ def normalize_phone(value) -> str:
 
 
 def get_all_members():
+    cached = _ttl_get(_members_cache)
+    if cached is not None:
+        return cached
     ws = _worksheet()
     rows = ws.get_all_records(numericise_ignore=['all'])
     members = []
     for i, row in enumerate(rows, start=2):
         row["row_index"] = i
         members.append(row)
+    _ttl_set(_members_cache, members)
     return members
 
 
@@ -121,6 +161,7 @@ def create_member_signup(phone: str, name: str, team: str, role: str, cohort_nam
     ws = _worksheet()
     row = [cohort_name, name, normalize_phone(phone), team, role, datetime.now().isoformat(timespec="seconds")]
     ws.append_row(row)
+    _ttl_invalidate(_members_cache)
     return get_member_by_phone(phone, cohort_name)
 
 
@@ -146,8 +187,13 @@ def _parse_date(value):
 
 
 def get_cohorts():
+    cached = _ttl_get(_cohorts_cache)
+    if cached is not None:
+        return cached
     ws = _cached_worksheet(_COHORT_SHEET_NAME)
-    return ws.get_all_records(numericise_ignore=['all'])
+    cohorts = ws.get_all_records(numericise_ignore=['all'])
+    _ttl_set(_cohorts_cache, cohorts)
+    return cohorts
 
 
 def get_active_cohort(today=None):
@@ -203,9 +249,18 @@ def active_members_by_team():
 
 
 
-def get_cache_row(team: str):
+def _cache_rows_raw():
+    cached = _ttl_get(_cache_rows_cache)
+    if cached is not None:
+        return cached
     ws = _cache_worksheet()
     rows = ws.get_all_records(numericise_ignore=['all'])
+    _ttl_set(_cache_rows_cache, rows)
+    return rows
+
+
+def get_cache_row(team: str):
+    rows = _cache_rows_raw()
     for i, row in enumerate(rows, start=2):
         if str(row.get("조")) == str(team):
             row["row_index"] = i
@@ -213,7 +268,7 @@ def get_cache_row(team: str):
     return None
 
 
-def set_cache_row(team: str, text: str, tag_text: str = ""):
+def set_cache_row(team: str, text: str, tag_text: str = "") -> str:
     ws = _cache_worksheet()
     now_str = now_kst().isoformat(timespec="seconds")
     existing = get_cache_row(team)
@@ -223,12 +278,13 @@ def set_cache_row(team: str, text: str, tag_text: str = ""):
         ws.update_cell(existing["row_index"], 4, now_str)
     else:
         ws.append_row([team, text, tag_text, now_str])
+    _ttl_invalidate(_cache_rows_cache)
+    return now_str
 
 
 def all_cache_rows() -> dict:
-    ws = _cache_worksheet()
     result = {}
-    for row in ws.get_all_records(numericise_ignore=['all']):
+    for row in _cache_rows_raw():
         team = str(row.get("조"))
         if team:
             result[team] = row
