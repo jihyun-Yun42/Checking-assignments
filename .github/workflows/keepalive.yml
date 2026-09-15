@@ -12,28 +12,5 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: 의존성 설치
-        run: pip install -r requirements.txt
-
-      - name: 비밀값으로 설정 파일 생성
-        run: |
-          cat > .env <<ENVEOF
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          TIMEZONE=Asia/Seoul
-          ENVEOF
-
-      - name: 진행 중인 기수인지 확인 (DB만 조회, Render는 안 건드림)
-        id: cohort
-        run: |
-          RESULT=$(python -m src.cohort_status)
-          echo "active=$RESULT" >> "$GITHUB_OUTPUT"
-
-      - name: Render 앱 깨워두기 (진행 중인 기수가 있을 때만)
-        if: steps.cohort.outputs.active == 'true'
+      - name: Render 앱 깨워두기
         run: curl -fsS "${{ secrets.RENDER_APP_URL }}/health" || true
