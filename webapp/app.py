@@ -66,6 +66,7 @@ def phone_entry():
         flash(str(e))
         return redirect(url_for("phone_entry"))
     except Exception:
+        app.logger.exception("로그인 중 현황판 서버 호출 실패")
         flash("현황판 서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.")
         return redirect(url_for("phone_entry"))
 
@@ -78,7 +79,7 @@ def phone_entry():
             fetched["admin"]["group_name"], fetched["missing_text"], fetched["tag_text"]
         )
     except Exception:
-        pass
+        app.logger.exception("로그인 직후 현황판 캐시 갱신 실패")
 
     session.permanent = True
     session["phone"] = phone
@@ -136,6 +137,7 @@ def dashboard_data():
     except leader_dashboard_client.DashboardLoginError as e:
         error = str(e)
     except Exception:
+        app.logger.exception("대시보드 데이터 갱신 중 현황판 서버 호출 실패")
         error = "현황판 서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요."
 
     cache_row = db_client.get_cache_row(team)
