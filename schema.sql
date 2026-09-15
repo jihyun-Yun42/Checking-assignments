@@ -47,3 +47,13 @@ CREATE TABLE IF NOT EXISTS display_name_overrides (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 갱신시각
     PRIMARY KEY (team, member_id)
 );
+
+CREATE TABLE IF NOT EXISTS hamummal_reviews (
+    id TEXT PRIMARY KEY,
+    check_date DATE NOT NULL,               -- 점검 기준일
+    window_desc TEXT,                       -- 점검 시간대 설명 (예: "09:00~10:00")
+    review JSONB NOT NULL,                  -- 조별 매칭 결과 전체
+    submitter_count INTEGER NOT NULL DEFAULT 0,
+    applied_teams JSONB NOT NULL DEFAULT '{}'::jsonb,  -- 조별 "반영 완료" 기록
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

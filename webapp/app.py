@@ -1,8 +1,8 @@
+import os
 import sys
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
-import json
-import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -98,7 +98,7 @@ def dashboard():
         return redirect(url_for("phone_entry"))
 
     hamummal_active = bool(cohort) and db_client.is_hamummal_active(cohort)
-    hamummal_review_id = _get_latest_review_id() if hamummal_active else None
+    hamummal_review_id = db_client.get_latest_review_id() if hamummal_active else None
     return render_template(
         "dashboard.html", member=member, hamummal_active=hamummal_active,
         hamummal_review_id=hamummal_review_id,
@@ -172,67 +172,6 @@ def dashboard_rename():
     return jsonify(ok=True)
 
 
-REVIEW_DIR = Path(__file__).resolve().parent.parent / "data" / "hamummal_review"
-LATEST_REVIEW_PATH = REVIEW_DIR / "_latest.json"
-
-
-def _set_latest_review(review_id: str, check_date_str: str) -> None:
-    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    LATEST_REVIEW_PATH.write_text(
-        json.dumps({"review_id": review_id, "check_date": check_date_str}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-
-def _get_latest_review_id():
-    # 대표 한 명이 업로드하면 다른 조장들은 이 포인터를 따라 같은 검토 결과를
-    # 바로 볼 수 있다 (각자 다시 업로드할 필요 없음).
-    if not LATEST_REVIEW_PATH.exists():
-        return None
-    try:
-        payload = json.loads(LATEST_REVIEW_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    review_id = payload.get("review_id")
-    if not review_id or not (REVIEW_DIR / f"{review_id}.json").exists():
-        return None
-    return review_id
-
-
-def _save_review(review: dict, check_date_str: str, window_desc: str, submitter_count: int = 0) -> str:
-    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    review_id = uuid.uuid4().hex[:12]
-    payload = {
-        "check_date": check_date_str,
-        "window_desc": window_desc,
-        "review": review,
-        "submitter_count": submitter_count,
-    }
-    (REVIEW_DIR / f"{review_id}.json").write_text(
-        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
-    )
-    return review_id
-
-
-def _load_review(review_id: str):
-    path = REVIEW_DIR / f"{review_id}.json"
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _mark_team_applied(review_id: str, data: dict, team: str, apply_results: dict) -> None:
-    # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
-    # 검토 전체가 아니라 조 단위로 기록한다.
-    applied_teams = data.setdefault("applied_teams", {})
-    applied_teams[team] = {
-        "applied_at": now_kst().isoformat(timespec="seconds"),
-        "apply_results": apply_results,
-    }
-    path = REVIEW_DIR / f"{review_id}.json"
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-
-
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
@@ -253,9 +192,10 @@ def hamummal_upload():
         end_str = request.form.get("end_time")
         f = request.files["chat_file"]
 
-        upload_dir = Path(__file__).resolve().parent.parent / "data" / "uploads"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        save_path = upload_dir / f"{date_str}_{f.filename}"
+        # 업로드 파일은 이 요청 안에서 분석하고 바로 버리면 되므로, 요청 간
+        # 유지가 보장되지 않는 임시 디렉토리(/tmp 등)에 저장한다.
+        tmp_fd, save_path = tempfile.mkstemp(prefix=f"{date_str}_", suffix=f"_{f.filename}")
+        os.close(tmp_fd)
         f.save(save_path)
 
         y, mo, d = map(int, date_str.split("-"))
@@ -264,18 +204,23 @@ def hamummal_upload():
         window_start = TZ.localize(datetime(y, mo, d, sh, sm))
         window_end = TZ.localize(datetime(y, mo, d, eh, em))
 
-        computed = hamummal_dashboard.compute_review(str(save_path), window_start, window_end, date_str)
-        review_id = _save_review(
+        try:
+            computed = hamummal_dashboard.compute_review(str(save_path), window_start, window_end, date_str)
+        finally:
+            try:
+                os.remove(save_path)
+            except OSError:
+                pass
+        review_id = db_client.save_review(
             computed["teams"], date_str, f"{start_str}~{end_str}",
             submitter_count=computed["submitter_count"],
         )
-        _set_latest_review(review_id, date_str)
         return redirect(url_for("hamummal_review", review_id=review_id))
 
     return render_template(
         "hamummal_upload.html",
         default_date=now_kst().date().isoformat(),
-        hamummal_review_id=_get_latest_review_id(),
+        hamummal_review_id=db_client.get_latest_review_id(),
     )
 
 
@@ -286,7 +231,7 @@ def hamummal_review(review_id):
         return redirect(url_for("phone_entry"))
     my_team = str(member.get("조"))
 
-    data = _load_review(review_id)
+    data = db_client.load_review(review_id)
     if not data:
         return "존재하지 않거나 만료된 검토입니다. 다시 업로드해주세요.", 404
 
@@ -315,7 +260,7 @@ def hamummal_review_confirm_match(review_id):
         return jsonify(ok=False, error="로그인이 필요합니다."), 401
     my_team = str(member.get("조"))
 
-    data = _load_review(review_id)
+    data = db_client.load_review(review_id)
     if not data:
         return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다."), 404
 
@@ -371,7 +316,7 @@ def hamummal_review_apply(review_id):
         return redirect(url_for("phone_entry"))
     my_team = str(member.get("조"))
 
-    data = _load_review(review_id)
+    data = db_client.load_review(review_id)
     if not data:
         return "존재하지 않거나 만료된 검토입니다. 다시 업로드해주세요.", 404
 
@@ -417,7 +362,7 @@ def hamummal_review_apply(review_id):
         ]
 
     apply_results = hamummal_dashboard.apply_review({team: entry}, check_date_str)
-    _mark_team_applied(review_id, data, team, apply_results)
+    db_client.mark_review_team_applied(review_id, team, apply_results)
 
     return render_template("hamummal_done.html", results=apply_results)
 

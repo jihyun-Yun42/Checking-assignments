@@ -1,3 +1,5 @@
+import json
+import uuid
 from datetime import datetime, timedelta
 
 import psycopg2
@@ -309,5 +311,73 @@ def set_display_name_override(team: str, member_id, name: str):
             updated_at = EXCLUDED.updated_at
         ''',
         (str(team), str(member_id), name, now_kst()),
+        fetch="none",
+    )
+
+
+# --- 하멈말 리뷰 결과 (예전엔 로컬 파일(data/hamummal_review/*.json)에 저장했는데,
+# Vercel 등 서버리스 환경에서는 요청 간에 로컬 디스크가 유지된다는 보장이 없어서
+# Postgres로 옮김) ---
+
+def save_review(review: dict, check_date_str: str, window_desc: str, submitter_count: int = 0) -> str:
+    review_id = uuid.uuid4().hex[:12]
+    _query(
+        '''
+        INSERT INTO hamummal_reviews (id, check_date, window_desc, review, submitter_count)
+        VALUES (%s, %s, %s, %s::jsonb, %s)
+        ''',
+        (review_id, check_date_str, window_desc, json.dumps(review, ensure_ascii=False), submitter_count),
+        fetch="none",
+    )
+    return review_id
+
+
+def load_review(review_id: str):
+    row = _query(
+        '''
+        SELECT
+            to_char(check_date, 'YYYY-MM-DD') AS check_date,
+            window_desc, review, submitter_count, applied_teams
+        FROM hamummal_reviews WHERE id = %s
+        ''',
+        (review_id,),
+        fetch="one",
+    )
+    if not row:
+        return None
+    return {
+        "check_date": row["check_date"],
+        "window_desc": row["window_desc"],
+        "review": row["review"],
+        "submitter_count": row["submitter_count"],
+        "applied_teams": row["applied_teams"] or {},
+    }
+
+
+def get_latest_review_id():
+    # 대표 한 명이 업로드하면 다른 조장들은 가장 최근 리뷰를 바로 볼 수 있다
+    # (각자 다시 업로드할 필요 없음).
+    row = _query(
+        "SELECT id FROM hamummal_reviews ORDER BY created_at DESC LIMIT 1",
+        fetch="one",
+    )
+    return row["id"] if row else None
+
+
+def mark_review_team_applied(review_id: str, team: str, apply_results: dict) -> None:
+    # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
+    # 검토 전체가 아니라 조 단위로 기록한다. jsonb 병합 연산자(||)로
+    # applied_teams 안의 해당 조 키만 갱신한다.
+    payload = {
+        "applied_at": now_kst().isoformat(timespec="seconds"),
+        "apply_results": apply_results,
+    }
+    _query(
+        '''
+        UPDATE hamummal_reviews
+        SET applied_teams = applied_teams || jsonb_build_object(%s, %s::jsonb)
+        WHERE id = %s
+        ''',
+        (team, json.dumps(payload, ensure_ascii=False), review_id),
         fetch="none",
     )
