@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>하멈말 검토</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:640px;margin:30px auto;padding:0 20px;color:#222}
+  h1{font-size:20px}
+  .meta{font-size:13px;color:#888;margin-bottom:20px}
+  .team{border:1px solid #e2e2e2;border-radius:12px;padding:14px 16px;margin-bottom:16px}
+  .team h2{font-size:16px;margin:0 0 8px}
+  .row{font-size:14px;padding:3px 0}
+  .row.ok, .row.miss{color:#0a7a2f;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .row.miss{color:#888}
+  .amb{color:#b8860b}
+  .err{color:#c0392b;font-weight:bold}
+  label.cand{display:block;font-size:14px;padding:4px 0}
+  .section-title{font-size:12px;color:#999;margin-top:10px;text-transform:uppercase}
+  .toolbar{position:sticky;bottom:0;background:#fff;padding:14px 0;border-top:1px solid #eee;margin-top:10px}
+  .toolbar label{font-size:14px}
+  button{width:100%;padding:16px;background:#3C1E1E;color:#fff;font-weight:bold;
+         font-size:16px;border:none;border-radius:12px;margin-top:10px}
+  button:disabled{background:#ccc;color:#888;cursor:default}
+  .warn{background:#fff6e5;border:1px solid #f0c36d;color:#8a6100;border-radius:10px;
+        padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px}
+  .applied{background:#eafaf1;border:1px solid #8fd6ab;color:#0a7a2f;border-radius:10px;
+        padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px}
+  .test-note{font-size:13px;color:#888;text-align:center;margin-top:8px}
+
+  .exclude-btn{flex-shrink:0;border:none;background:none;color:#bbb;
+       font-size:15px;line-height:1;font-weight:bold;padding:2px 4px;
+       cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
+       justify-content:center}
+  .exclude-btn:hover{color:#c0392b}
+
+  .mark-submitted-btn{flex-shrink:0;border:none;background:none;color:#bbb;
+       font-size:15px;line-height:1;font-weight:bold;padding:2px 4px;
+       cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
+       justify-content:center}
+  .mark-submitted-btn:hover{color:#0a7a2f}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+       align-items:center;justify-content:center;padding:20px;z-index:100}
+  .modal-overlay[hidden]{display:none}
+  .modal-box{background:#fff;border-radius:14px;padding:20px;max-width:420px;width:100%;
+       max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+  .modal-title{font-size:16px;font-weight:bold;margin:0 0 8px;color:#222}
+  .modal-desc{font-size:13px;color:#666;line-height:1.5;margin:0 0 14px}
+  .confirm-list{font-size:13px;color:#333;margin-bottom:16px}
+  .confirm-list .team-name{font-weight:bold;margin-top:14px;display:block}
+  .confirm-list .team-name:first-child{margin-top:0}
+  .confirm-list .name-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .confirm-list .name-chip{background:#f5f5f5;border-radius:6px;padding:4px 9px;
+       font-size:12px;color:#333;line-height:1.4}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px}
+  .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;cursor:pointer;width:auto;margin:0}
+  .modal-btn-cancel{background:#eee;color:#333}
+  .modal-btn-save{background:#3C1E1E;color:#fff}
+</style>
+</head>
+<body>
+  <h1>하멈말 검토 ({{ check_date }})</h1>
+  <p class="meta">진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.</p>
+
+  {% if submitter_count == 0 %}
+    <p class="warn">⚠️ 업로드한 파일에서 이 날짜·시간대({{ check_date }} {{ window_desc }})에 해당하는 메시지를 하나도 찾지 못했어요.
+    아래 결과는 전부 미제출로 나올 수 있어요 — 업로드 화면에서 날짜/시간이 실제 대화 날짜와 맞는지 먼저 확인해보세요.</p>
+  {% endif %}
+
+  {% if applied %}
+    <p class="applied">✅ 이 검토는 {{ applied_at }} 반영 완료됐어요. 아래 체크 상태는 그때 기준이고, 지금 다시 체크해도 저장되지 않아요.
+    추가로 반영할 게 있으면 새로 업로드해서 검토해주세요.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('hamummal_review_apply', review_id=review_id) }}" id="review-form">
+  {% for team, data in review.items() %}
+    <div class="team" data-team="{{ team }}">
+      <h2>{{ team }}</h2>
+      {% if data.error %}
+        <p class="err">⚠️ {{ data.error }}</p>
+      {% endif %}
+
+      <div class="section-title">제출자로 자동 확인됨 (<span class="matched-count">{{ data.matched|length }}</span>명) — 반영시 자동 체크됩니다</div>
+      <div class="matched-list">
+        {% for m in data.matched %}
+          <div class="row ok" data-member-id="{{ m.id }}">
+            <span>✅ {{ m.nickname }} ({{ m.real_name }})</span>
+            {% if not applied %}
+              <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                title="우리 조원 아님" aria-label="우리 조원 아님">✕</button>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if not data.matched %}<div class="row miss matched-empty">없음</div>{% endif %}
+
+      {% if data.ambiguous %}
+        <div class="amb-section">
+          <div class="section-title">확인 필요 (<span class="amb-count">{{ data.ambiguous|length }}</span>건) — 맞으면 체크해주세요</div>
+          {% for amb in data.ambiguous %}
+            <div class="row amb">
+              "{{ amb.raw }}" 메시지 보낸 사람 추정:
+              {% for c in amb.candidates %}
+                <label class="cand">
+                  <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"{{ ' disabled' if applied else '' }}
+                    class="amb-checkbox"
+                    data-team="{{ team }}" data-member-id="{{ c.id }}"
+                    data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
+                    data-raw="{{ amb.raw }}">
+                  {{ c.nickname }} ({{ c.real_name }})
+                </label>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="section-title">미제출 추정 (<span class="unmatched-count">{{ data.unmatched_members|length }}</span>명)</div>
+      <div class="unmatched-list">
+        {% for m in data.unmatched_members %}
+          <div class="row miss" data-member-id="{{ m.id }}">
+            <span>{{ m.nickname }} ({{ m.real_name }})</span>
+            {% if not applied %}
+              <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
+                title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if not data.unmatched_members %}<div class="row miss unmatched-empty">없음</div>{% endif %}
+    </div>
+  {% endfor %}
+
+    <div class="toolbar">
+      <button type="submit"{{ '' if (hamummal_test_mode and not applied) else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
+      {% if applied %}
+        <p class="test-note">이미 반영된 검토라 버튼이 비활성화되어 있어요.</p>
+      {% elif not hamummal_test_mode %}
+        <p class="test-note">저금은 테스트 모드가 꺼져 있어서 반영 버튼이 비활성화되어 있어요. (검증 끝나면 실제 서비스에 열 예정)</p>
+      {% endif %}
+    </div>
+  </form>
+
+  <div class="modal-overlay" id="confirm-apply-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">반영 확인</p>
+      <p class="modal-desc">아래 인원을 소리튠 조장페이지(boot.soritune.com)에 하멈말 제출완료로 반영합니다.
+        실제 점수에 반영됩니다. 명단을 한 번 더 확인해주세요.</p>
+      <div class="confirm-list" id="confirm-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="confirm-apply-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-save" id="confirm-apply-ok">정말 반영하겠습니다</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var CONFIRM_MATCH_URL = {{ url_for('hamummal_review_confirm_match', review_id=review_id) | tojson }};
+      var UNCONFIRM_MATCH_URL = {{ url_for('hamummal_review_unconfirm_match', review_id=review_id) | tojson }};
+      var form = document.getElementById('review-form');
+      var submitBtn = form.querySelector('button[type="submit"]');
+      var modal = document.getElementById('confirm-apply-modal');
+      var listEl = document.getElementById('confirm-list');
+      var okBtn = document.getElementById('confirm-apply-ok');
+      var cancelBtn = document.getElementById('confirm-apply-cancel');
+
+      // 서버가 처음부터 비활성화해둔 상태(테스트 모드 꺼짐 / 이미 반영됨)는 그대로
+      // 지켜야 하므로, 확인필요 체크 처리 중 잠깐 막는 것과 구분해서 관리한다.
+      var baseSubmitDisabled = submitBtn.disabled;
+      var baseSubmitText = submitBtn.textContent;
+      var pendingConfirmCount = 0;
+
+      function updateSubmitButtonState() {
+        submitBtn.disabled = baseSubmitDisabled || pendingConfirmCount > 0;
+        submitBtn.textContent = pendingConfirmCount > 0 ? '저장 중…' : baseSubmitText;
+      }
+
+      function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s == null ? '' : s;
+        return div.innerHTML;
+      }
+
+      function bumpCount(teamEl, selector, delta) {
+        var el = teamEl.querySelector(selector);
+        if (!el) return null;
+        var next = Math.max(0, parseInt(el.textContent, 10) + delta);
+        el.textContent = String(next);
+        return next;
+      }
+
+      function addHiddenExcludeField(team, memberId) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'exclude__' + team + '__' + memberId;
+        input.value = '1';
+        form.appendChild(input);
+        return input;
+      }
+
+      function addHiddenExtraField(team, memberId) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'extra__' + team + '__' + memberId;
+        input.value = '1';
+        form.appendChild(input);
+        return input;
+      }
+
+      function confirmExclude(name) {
+        var label = name ? name + '\n\n' : '';
+        return window.confirm(label + '우리 조원이 아닌가요?\n체크를 해제하고 명단에서 제외합니다.');
+      }
+
+      function makeExcludeButton(team, memberId, name, onExclude) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'exclude-btn';
+        btn.textContent = '✕';
+        btn.title = '우리 조원 아님';
+        btn.setAttribute('aria-label', '우리 조원 아님');
+        btn.addEventListener('click', function () {
+          if (!confirmExclude(name)) return;
+          onExclude();
+        });
+        return btn;
+      }
+
+      function wireStaticExcludeButtons() {
+        document.querySelectorAll('.matched-list .exclude-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var team = btn.getAttribute('data-team');
+            var memberId = btn.getAttribute('data-member-id');
+            var row = btn.closest('.row.ok');
+            var teamEl = btn.closest('.team');
+            var span = row.querySelector('span');
+            var name = span ? span.textContent.replace('✅', '').trim() : '';
+            if (!confirmExclude(name)) return;
+            row.remove();
+            bumpCount(teamEl, '.matched-count', -1);
+            addHiddenExcludeField(team, memberId);
+          });
+        });
+      }
+      wireStaticExcludeButtons();
+
+      function moveUnmatchedToMatched(btn) {
+        var team = btn.getAttribute('data-team');
+        var memberId = btn.getAttribute('data-member-id');
+        var nickname = btn.getAttribute('data-nickname');
+        var realName = btn.getAttribute('data-real-name');
+        var row = btn.closest('.row.miss');
+        var teamEl = btn.closest('.team');
+
+        row.remove();
+        bumpCount(teamEl, '.unmatched-count', -1);
+        var emptyMissEl = teamEl.querySelector('.unmatched-empty');
+        if (emptyMissEl) emptyMissEl.remove();
+
+        var matchedList = teamEl.querySelector('.matched-list');
+        var newRow = document.createElement('div');
+        newRow.className = 'row ok';
+        newRow.setAttribute('data-member-id', memberId);
+
+        var span = document.createElement('span');
+        span.textContent = '✅ ' + nickname + ' (' + realName + ')';
+        newRow.appendChild(span);
+
+        // extra__ 히든필드를 새 행의 자식으로 넣어두면, 나중에 이 행을 제외
+        // 처리할 때 행을 통째로 지우는 것만으로 히든필드도 함께 사라진다
+        // (확인필요 체크박스를 제외할 때와 동일한 방식).
+        var extraInput = addHiddenExtraField(team, memberId);
+        newRow.appendChild(extraInput);
+
+        newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
+          newRow.remove();
+          bumpCount(teamEl, '.matched-count', -1);
+        }));
+
+        matchedList.appendChild(newRow);
+        bumpCount(teamEl, '.matched-count', 1);
+
+        var emptyEl = teamEl.querySelector('.matched-empty');
+        if (emptyEl) emptyEl.remove();
+      }
+
+      function wireMarkSubmittedButtons() {
+        document.querySelectorAll('.unmatched-list .mark-submitted-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            moveUnmatchedToMatched(btn);
+          });
+        });
+      }
+      wireMarkSubmittedButtons();
+
+      document.querySelectorAll('.amb-checkbox').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          if (!cb.checked) return;
+
+          var team = cb.getAttribute('data-team');
+          var memberId = cb.getAttribute('data-member-id');
+          var nickname = cb.getAttribute('data-nickname');
+          var realName = cb.getAttribute('data-real-name');
+          var raw = cb.getAttribute('data-raw');
+          var teamEl = cb.closest('.team');
+          var ambBlock = cb.closest('.row.amb');
+
+          // 시트에 저장되기 전에 "반영하기"를 눌러버리면 아직 matched-list로
+          // 옮겨지지 않은 사람이 반영확인 팝업 명단에서 누락될 수 있으므로,
+          // 저장이 끝날 때까지 반영 버튼을 잠깐 막아둔다.
+          pendingConfirmCount += 1;
+          updateSubmitButtonState();
+
+          fetch(CONFIRM_MATCH_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              team: team, member_id: memberId, nickname: nickname, real_name: realName, raw: raw,
+            }),
+          })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              if (!data.ok) {
+                alert(data.error || '시트에 저장하지 못했습니다.');
+                cb.checked = false;
+                return;
+              }
+
+              var matchedList = teamEl.querySelector('.matched-list');
+              var row = document.createElement('div');
+              row.className = 'row ok';
+              row.setAttribute('data-member-id', memberId);
+
+              var span = document.createElement('span');
+              span.textContent = '✅ ' + nickname + ' (' + realName + ')';
+              row.appendChild(span);
+
+              cb.style.display = 'none';
+              row.appendChild(cb);
+              row.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
+                row.remove();
+                bumpCount(teamEl, '.matched-count', -1);
+                fetch(UNCONFIRM_MATCH_URL, {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ team: team, member_id: memberId, raw: raw }),
+                }).catch(function () {});
+              }));
+
+              matchedList.appendChild(row);
+              bumpCount(teamEl, '.matched-count', 1);
+
+              var emptyEl = teamEl.querySelector('.matched-empty');
+              if (emptyEl) emptyEl.remove();
+
+              if (ambBlock) ambBlock.remove();
+              var ambLeft = bumpCount(teamEl, '.amb-count', -1);
+              if (ambLeft === 0) {
+                var ambSection = teamEl.querySelector('.amb-section');
+                if (ambSection) ambSection.remove();
+              }
+            })
+            .catch(function () {
+              alert('네트워크 오류로 시트에 저장하지 못했습니다.');
+              cb.checked = false;
+            })
+            .finally(function () {
+              pendingConfirmCount = Math.max(0, pendingConfirmCount - 1);
+              updateSubmitButtonState();
+            });
+        });
+      });
+
+      function buildSummary() {
+        var html = '';
+        var total = 0;
+        document.querySelectorAll('.team').forEach(function (teamEl) {
+          var teamName = teamEl.getAttribute('data-team');
+          var names = [];
+          teamEl.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
+            var span = row.querySelector('span');
+            names.push(span ? span.textContent.replace('✅', '').trim() : '');
+          });
+          if (names.length === 0) return;
+          total += names.length;
+          html += '<span class="team-name">' + escapeHtml(teamName) + ' (' + names.length + '명)</span>';
+          html += '<div class="name-chips">' + names.map(function (n) {
+            return '<span class="name-chip">' + escapeHtml(n) + '</span>';
+          }).join('') + '</div>';
+        });
+        if (total === 0) {
+          html = '반영될 인원이 없습니다.';
+        }
+        return html;
+      }
+
+      form.addEventListener('submit', function (e) {
+        if (submitBtn.disabled) return;
+        e.preventDefault();
+        listEl.innerHTML = buildSummary();
+        modal.hidden = false;
+      });
+
+      okBtn.addEventListener('click', function () {
+        modal.hidden = true;
+        form.submit();
+      });
+      cancelBtn.addEventListener('click', function () {
+        modal.hidden = true;
+      });
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) modal.hidden = true;
+      });
+    })();
+  </script>
+</body>
+</html>

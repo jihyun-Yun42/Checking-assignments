@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>반영 완료</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
+  li{margin:6px 0}
+</style>
+</head>
+<body>
+  <h1>반영 결과</h1>
+  <ul>
+  {% for team, msg in results.items() %}
+    <li><b>{{ team }}</b>: {{ msg }}</li>
+  {% endfor %}
+  </ul>
+</body>
+</html>

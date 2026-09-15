@@ -1,0 +1,4 @@
+# crontab -e 로 아래 두 줄을 등록 (__PROJECT_DIR__ 를 실제 프로젝트 경로로 치환)
+# 스케줄러: 매시 정각에 1번 실행 (희망시간은 '시' 단위로만 설정 가능)
+0 * * * * cd __PROJECT_DIR__ && venv/bin/python -m src.scheduler >> data/scheduler.log 2>&1
+*/10 * * * * cd __PROJECT_DIR__ && venv/bin/python -m src.cafe_cache_refresh >> data/cafecache.log 2>&1

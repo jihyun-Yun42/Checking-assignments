@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>하멈말 미션 업로드</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
+  label{display:block;margin-top:16px;font-weight:bold}
+  input{width:100%;padding:10px;font-size:16px;margin-top:6px;box-sizing:border-box}
+  button{margin-top:24px;width:100%;padding:14px;background:#3C1E1E;color:#fff;
+         font-weight:bold;border:none;border-radius:10px;font-size:16px}
+  button:disabled{opacity:.6}
+  p.hint{font-size:13px;color:#888}
+  p.hint a{color:#8a5a00}
+</style>
+</head>
+<body>
+  <h1>하멈말 미션 대화 업로드</h1>
+  <p class="hint">업로드하면 가입된 조들의 boot.soritune.com 조원 명단과 자동으로
+     매칭한 뒤, 바로 반영하지 않고 검토 화면을 먼저 보여드려요.</p>
+  {% if hamummal_review_id %}
+    <p class="hint">이미 검토가 있어요 →
+      <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}">보기</a>
+    </p>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data">
+    <label>비밀번호</label>
+    <input type="password" name="password" required>
+    <label>날짜</label>
+    <input type="date" name="date" value="{{ default_date }}" required>
+    <label>오늘 실제 진행 시작 시각</label>
+    <input type="time" name="start_time" value="13:30" required>
+    <label>오늘 실제 진행 종료 시각</label>
+    <input type="time" name="end_time" value="14:01" required>
+    <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
+    <input type="file" name="chat_file" accept=".txt,.csv" required>
+    <button type="submit" id="submit-btn">분석하기</button>
+  </form>
+
+  <script>
+    document.querySelector('form').addEventListener('submit', function () {
+      var btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = '분석 중… (파일이 크면 시간이 걸려요)';
+    });
+  </script>
+</body>
+</html>

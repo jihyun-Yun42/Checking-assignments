@@ -1,0 +1,6 @@
+.env
+data/
+config/google_service_account.json
+__pycache__/
+*.pyc
+README.md

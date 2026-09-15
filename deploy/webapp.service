@@ -1,0 +1,15 @@
+[Unit]
+Description=Sorituune assignment-check webapp
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/venv/bin/gunicorn -w 2 -b 0.0.0.0:80 webapp.app:app
+Restart=always
+RestartSec=5
+User=root
+EnvironmentFile=__PROJECT_DIR__/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ member['이름'] }} · {{ member['조'] }} 대시보드</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  h1{font-size:19px;margin:0;line-height:1.4}
+  h2{font-size:14px;margin:22px 0 4px;color:#444;display:flex;align-items:center;gap:8px}
+  .meta{font-size:13px;color:#888;margin-top:6px;min-height:16px}
+  .flash{color:#c0392b;font-weight:bold;font-size:14px;margin-top:10px}
+  .flash.success{color:#0a7a2f}
+
+  .hamummal-link{display:block;margin-top:14px;padding:10px 14px;border-radius:10px;
+       background:#fff3e0;color:#8a5a00;font-size:13px;font-weight:bold;text-decoration:none;
+       border:1px solid #f0c36d}
+  .hamummal-block{margin-top:0}
+  .hamummal-link-secondary{display:block;margin-top:6px;padding:0 2px;font-size:12px;
+       color:#a67c00;text-decoration:underline;text-underline-offset:2px}
+
+  a.refresh-small, button.refresh-small{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
+       padding:7px 12px;border-radius:8px;font-size:12px;font-weight:bold;
+       background:#3C1E1E;color:#fff;text-decoration:none;white-space:nowrap;border:none;cursor:pointer}
+  .refresh-small.loading{opacity:.7;pointer-events:none}
+
+  .missing-section{border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-top:8px}
+  .missing-section-title{font-size:14px;font-weight:bold;color:#333}
+  .missing-section-title .count{font-weight:normal;color:#c0392b;margin-left:2px}
+  .missing-names{font-size:14px;color:#444;line-height:1.6;margin-top:4px}
+  .member-name{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+       text-underline-offset:3px;text-decoration-color:#bbb}
+  .member-name:hover{color:#3C1E1E;text-decoration-color:#3C1E1E}
+  .member-name.renaming{cursor:default;pointer-events:none;text-decoration:none;
+       animation:name-pulse 1s ease-in-out infinite}
+  @keyframes name-pulse{0%,100%{opacity:.35}50%{opacity:.8}}
+  .missing-empty{font-size:14px;color:#0a7a2f;margin-top:8px}
+  .missing-fallback{font-size:14px;color:#444;line-height:1.7;white-space:pre-wrap;
+       border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-top:8px}
+
+  .copy-btn{border:none;background:#eee;color:#333;font-size:12px;font-weight:bold;
+       padding:4px 10px;border-radius:6px;cursor:pointer}
+  .copy-btn.copied{background:#0a7a2f;color:#fff}
+  .copy-btn:disabled{opacity:.5;cursor:default}
+  .tag-box{font-size:14px;color:#222;line-height:1.7;white-space:pre-wrap;
+       border:1px solid #eee;border-radius:10px;padding:14px;margin-top:8px;min-height:20px}
+
+  .skeleton{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
+       background-size:400% 100%;animation:skeleton-loading 1.4s ease infinite;border-radius:6px}
+  .skeleton-line{height:13px;margin:0}
+  .skeleton-card{border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-top:8px}
+  @keyframes skeleton-loading{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+  .spinner-inline{display:inline-block;width:11px;height:11px;margin-right:5px;
+       vertical-align:-1px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+       border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+       align-items:center;justify-content:center;padding:20px;z-index:100}
+  .modal-overlay[hidden]{display:none}
+  .modal-box{background:#fff;border-radius:14px;padding:20px;max-width:340px;width:100%;
+       box-shadow:0 10px 30px rgba(0,0,0,.2)}
+  .modal-title{font-size:16px;font-weight:bold;margin:0 0 8px;color:#222}
+  .modal-desc{font-size:13px;color:#666;line-height:1.5;margin:0 0 14px}
+  .modal-input{width:100%;box-sizing:border-box;font-size:15px;padding:10px 12px;
+       border:1px solid #ddd;border-radius:8px;margin-bottom:16px;font-family:inherit}
+  .modal-input:focus{outline:none;border-color:#3C1E1E}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px}
+  .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;cursor:pointer}
+  .modal-btn-cancel{background:#eee;color:#333}
+  .modal-btn-save{background:#3C1E1E;color:#fff}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>{{ member['이름'] }}님 · {{ member['조'] }} · {{ member['역할'] }}</h1>
+    <button type="button" class="refresh-small" id="refresh-btn">새로고침</button>
+  </div>
+
+  {% if hamummal_active %}
+    {% if hamummal_review_id %}
+      <div class="hamummal-block">
+        <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}" class="hamummal-link">📮 하멈말 제출 현황 확인</a>
+        <a href="{{ url_for('hamummal_upload') }}" class="hamummal-link-secondary">파일 다시 업로드하기</a>
+      </div>
+    {% else %}
+      <a href="{{ url_for('hamummal_upload') }}" class="hamummal-link">📮 하멈말 미션 업로드</a>
+    {% endif %}
+  {% endif %}
+
+  <p class="meta" id="meta-text">불러오는 중…</p>
+
+  {% with cat_messages = get_flashed_messages(with_categories=true) %}
+    {% if cat_messages %}
+      {% set category, message = cat_messages[0] %}
+      <p class="flash {{ 'success' if category == 'success' else '' }}">{{ message }}</p>
+    {% endif %}
+  {% endwith %}
+  <p class="flash" id="live-error" hidden></p>
+
+  <h2>미제출자 목록</h2>
+  <div id="missing-list">
+    <div class="missing-section skeleton-card">
+      <div class="skeleton skeleton-line" style="width:40%"></div>
+      <div class="skeleton skeleton-line" style="width:70%;margin-top:10px"></div>
+    </div>
+    <div class="missing-section skeleton-card">
+      <div class="skeleton skeleton-line" style="width:35%"></div>
+      <div class="skeleton skeleton-line" style="width:60%;margin-top:10px"></div>
+    </div>
+  </div>
+
+  <h2>단체방 알림용 (태그) <button type="button" class="copy-btn" id="copy-tag-btn" disabled>복사</button></h2>
+  <div class="tag-box" id="tag-text">
+    <div class="skeleton skeleton-line" style="width:90%"></div>
+    <div class="skeleton skeleton-line" style="width:60%;margin-top:8px"></div>
+  </div>
+
+  <div class="modal-overlay" id="rename-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">이름 변경</p>
+      <p class="modal-desc">카톡 단체방에 뜨는 이름으로 맞춰두면 미제출자 목록과 태그 모두 이 이름으로 나가요. 기본값으로 되돌리려면 비워두고 저장해주세요.</p>
+      <input type="text" class="modal-input" id="rename-modal-input" maxlength="30">
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="rename-modal-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-save" id="rename-modal-save">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var DATA_URL = {{ url_for('dashboard_data') | tojson }};
+      var RENAME_URL = {{ url_for('dashboard_rename') | tojson }};
+      var metaEl = document.getElementById('meta-text');
+      var missingEl = document.getElementById('missing-list');
+      var tagEl = document.getElementById('tag-text');
+      var errorEl = document.getElementById('live-error');
+      var refreshBtn = document.getElementById('refresh-btn');
+      var copyBtn = document.getElementById('copy-tag-btn');
+      var renameModal = document.getElementById('rename-modal');
+      var renameInput = document.getElementById('rename-modal-input');
+      var renameSaveBtn = document.getElementById('rename-modal-save');
+      var renameCancelBtn = document.getElementById('rename-modal-cancel');
+      var renameMemberId = null;
+
+      function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s == null ? '' : s;
+        return div.innerHTML;
+      }
+
+      function renderSkeleton() {
+        metaEl.textContent = '불러오는 중…';
+        errorEl.hidden = true;
+        copyBtn.disabled = true;
+        missingEl.innerHTML =
+          '<div class="missing-section skeleton-card">' +
+            '<div class="skeleton skeleton-line" style="width:40%"></div>' +
+            '<div class="skeleton skeleton-line" style="width:70%;margin-top:10px"></div>' +
+          '</div>' +
+          '<div class="missing-section skeleton-card">' +
+            '<div class="skeleton skeleton-line" style="width:35%"></div>' +
+            '<div class="skeleton skeleton-line" style="width:60%;margin-top:10px"></div>' +
+          '</div>';
+        tagEl.innerHTML =
+          '<div class="skeleton skeleton-line" style="width:90%"></div>' +
+          '<div class="skeleton skeleton-line" style="width:60%;margin-top:8px"></div>';
+      }
+
+      function renderMissingSections(sections) {
+        if (!sections || sections.length === 0) {
+          missingEl.innerHTML = '<p class="missing-empty">미제출자 없음 🎉</p>';
+          return;
+        }
+        var html = '';
+        sections.forEach(function (sec) {
+          var namesHtml = (sec.members || []).map(function (m) {
+            return '<span class="member-name" data-id="' + escapeHtml(String(m.id)) + '">' +
+              escapeHtml(m.name) + '</span>';
+          }).join(', ');
+          html += '<div class="missing-section">' +
+            '<div class="missing-section-title">' + escapeHtml(sec.label) +
+            '<span class="count">' + sec.count + '명</span></div>' +
+            '<div class="missing-names">' + namesHtml + '</div>' +
+          '</div>';
+        });
+        missingEl.innerHTML = html;
+      }
+
+      function renderFallbackText(text) {
+        var box = document.createElement('div');
+        box.className = 'missing-fallback';
+        box.textContent = text || '';
+        missingEl.innerHTML = '';
+        missingEl.appendChild(box);
+      }
+
+      function loadDashboardData(opts) {
+        var quiet = !!(opts && opts.quiet);
+        if (!quiet) {
+          renderSkeleton();
+        }
+        fetch(DATA_URL, { credentials: 'same-origin' })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.redirect) {
+              window.location = data.redirect;
+              return;
+            }
+            if (data.ok) {
+              metaEl.textContent = data.last_updated || '';
+              renderMissingSections(data.missing_sections);
+              tagEl.textContent = data.tag_text || '';
+              copyBtn.disabled = !data.tag_text;
+            } else {
+              errorEl.textContent = data.error || '현황판 서버에 연결하지 못했습니다.';
+              errorEl.hidden = false;
+              if (data.fallback) {
+                metaEl.textContent = data.fallback.last_updated || '';
+                renderFallbackText(data.fallback.missing_text);
+                tagEl.textContent = data.fallback.tag_text || '';
+                copyBtn.disabled = !data.fallback.tag_text;
+              } else {
+                metaEl.textContent = '아직 갱신된 데이터가 없어요.';
+                missingEl.innerHTML = '';
+                tagEl.textContent = '';
+              }
+            }
+          })
+          .catch(function () {
+            errorEl.textContent = '네트워크 오류로 갱신하지 못했습니다. 잠시 후 다시 시도해주세요.';
+            errorEl.hidden = false;
+            metaEl.textContent = '';
+            missingEl.innerHTML = '';
+          })
+          .finally(function () {
+            refreshBtn.classList.remove('loading');
+            refreshBtn.innerHTML = '새로고침';
+          });
+      }
+
+      refreshBtn.addEventListener('click', function () {
+        refreshBtn.classList.add('loading');
+        refreshBtn.innerHTML = '<span class="spinner-inline"></span>새로고침';
+        loadDashboardData();
+      });
+
+      function openRenameModal(memberId, currentName) {
+        renameMemberId = memberId;
+        renameInput.value = currentName;
+        renameModal.hidden = false;
+        renameInput.focus();
+        renameInput.select();
+      }
+
+      function closeRenameModal() {
+        renameModal.hidden = true;
+        renameMemberId = null;
+      }
+
+      function setRenamingState(memberId, on) {
+        var els = missingEl.querySelectorAll('.member-name');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].getAttribute('data-id') === String(memberId)) {
+            els[i].classList.toggle('renaming', on);
+          }
+        }
+      }
+
+      function submitRename() {
+        var memberId = renameMemberId;
+        var next = renameInput.value.trim();
+        closeRenameModal();
+
+        // 실제 갱신은 외부 현황판 API를 다시 불러오는 loadDashboardData가
+        // 끝나야 화면에 반영되는데 이게 느릴 수 있어서, 그 사이엔 바뀌는 중이라는
+        // 걸 알 수 있도록 해당 이름만 흐리게 펄스 표시해둔다.
+        setRenamingState(memberId, true);
+
+        fetch(RENAME_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ member_id: memberId, name: next })
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.redirect) {
+              window.location = data.redirect;
+              return;
+            }
+            if (!data.ok) {
+              setRenamingState(memberId, false);
+              alert(data.error || '저장하지 못했습니다. 다시 시도해주세요.');
+              return;
+            }
+            // 화면을 스켈레톤으로 비웠다가 다시 채우면 '새로고침'처럼 보이므로,
+            // 이름 저장 후에는 조용히(quiet) 데이터만 갱신한다. 목록이 다시
+            // 그려지면서 renaming 표시도 자연히 사라진다.
+            loadDashboardData({ quiet: true });
+          })
+          .catch(function () {
+            setRenamingState(memberId, false);
+            alert('네트워크 오류로 저장하지 못했습니다. 다시 시도해주세요.');
+          });
+      }
+
+      missingEl.addEventListener('click', function (e) {
+        var el = e.target.closest('.member-name');
+        if (!el) return;
+        openRenameModal(el.getAttribute('data-id'), el.textContent);
+      });
+
+      renameSaveBtn.addEventListener('click', submitRename);
+      renameCancelBtn.addEventListener('click', closeRenameModal);
+      renameModal.addEventListener('click', function (e) {
+        if (e.target === renameModal) closeRenameModal();
+      });
+      renameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitRename();
+        } else if (e.key === 'Escape') {
+          closeRenameModal();
+        }
+      });
+
+      // 단체방 알림용 태그 복사 버튼. 클립보드 API를 우선 쓰고, 안 되는 환경(예:
+      // HTTPS가 아닌 로컬 네트워크 접속)에서는 임시 textarea로 대신 복사한다.
+      copyBtn.addEventListener('click', function () {
+        var btn = this;
+        var text = tagEl.innerText;
+
+        function showResult(ok) {
+          var original = '복사';
+          btn.textContent = ok ? '복사됨!' : '복사 실패';
+          btn.classList.toggle('copied', ok);
+          setTimeout(function () {
+            btn.textContent = original;
+            btn.classList.remove('copied');
+          }, 1500);
+        }
+
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(
+            function () { showResult(true); },
+            function () { showResult(false); }
+          );
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          var ok = false;
+          try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+          document.body.removeChild(ta);
+          showResult(ok);
+        }
+      });
+
+      loadDashboardData();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+name: dashboard-cache-refresh
+
+on:
+  schedule:
+    # 15분마다 실행: 셀프 가입된 조들만, boot.soritune.com 현황판을 조회해서
+    # 구글시트 "현황캐시" 탭을 갱신한다 (알림 발송은 더 이상 하지 않음 —
+    # 조장/부조장이 웹 대시보드에서 직접 확인하는 방식으로 바뀌었기 때문).
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}   # Actions 탭에서 수동 실행 버튼
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 비밀값으로 설정 파일 생성
+        run: |
+          mkdir -p config
+          cat > .env <<ENVEOF
+          GOOGLE_SERVICE_ACCOUNT_JSON=config/google_service_account.json
+          GOOGLE_SHEET_NAME=${{ secrets.GOOGLE_SHEET_NAME }}
+          TIMEZONE=Asia/Seoul
+          ENVEOF
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > config/google_service_account.json
+
+      - name: 현황판 캐시 갱신 (조별 미제출자 텍스트)
+        run: python -m src.leader_dashboard_cache_refresh
