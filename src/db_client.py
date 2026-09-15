@@ -141,8 +141,7 @@ def get_cohorts():
 
 
 def get_active_cohort(today=None):
-    from datetime import date
-    today = today or date.today()
+    today = today or now_kst().date()
     cohorts = get_cohorts()
     for cohort in cohorts:
         start = _parse_date(cohort.get("시작일"))
@@ -168,10 +167,9 @@ def hamummal_window(cohort):
 
 
 def is_hamummal_active(cohort, today=None):
-    from datetime import date
     if not cohort:
         return False
-    today = today or date.today()
+    today = today or now_kst().date()
     start, end = hamummal_window(cohort)
     return bool(start and end and start <= today <= end)
 
