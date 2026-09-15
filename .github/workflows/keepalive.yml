@@ -2,7 +2,10 @@ name: keep-render-awake
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # 10분마다 (Render의 15분 슬립 기준보다 여유있게)
+    # 5분마다, 정각 기준 오프셋을 줘서(2,7,12...) GitHub Actions가 정시(0분) 근처에
+    # 몰릴 때 스케줄이 밀리는 걸 어느 정도 피한다. 어쩌다 한 번 밀리거나 스킵돼도
+    # 다음 재시도가 5분 뒤라 Render의 15분 슬립 기준 안에 더 잘 들어온다.
+    - cron: "2-59/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
