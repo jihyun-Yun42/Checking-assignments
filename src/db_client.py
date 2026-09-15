@@ -68,7 +68,7 @@ _MEMBER_COLS = '''
     phone AS "휴대폰번호",
     team AS "조",
     role AS "역할",
-    to_char(joined_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "가입일시"
+    to_char(joined_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS "가입일시"
 '''
 
 
@@ -101,7 +101,7 @@ def create_member_signup(phone: str, name: str, team: str, role: str, cohort_nam
         VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (cohort, phone) DO NOTHING
         ''',
-        (cohort_name, name, normalize_phone(phone), team, role, datetime.now()),
+        (cohort_name, name, normalize_phone(phone), team, role, now_kst()),
         fetch="none",
     )
     return get_member_by_phone(phone, cohort_name)
@@ -196,7 +196,7 @@ _CACHE_COLS = '''
     team AS "조",
     missing_text AS "미제출텍스트",
     tag_text AS "태그리스트",
-    to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "갱신시각"
+    to_char(updated_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS "갱신시각"
 '''
 
 
@@ -244,7 +244,7 @@ def get_confirmed_matches(team: str) -> list:
             nickname AS "닉네임",
             real_name AS "실명",
             kakao_display_name AS "카카오표시이름",
-            to_char(confirmed_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "확정일시"
+            to_char(confirmed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS "확정일시"
         FROM confirmed_matches WHERE team = %s
         ''',
         (str(team),),
