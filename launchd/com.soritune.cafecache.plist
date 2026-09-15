@@ -2,16 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.sorituune.scheduler</string>
+  <key>Label</key><string>com.soritune.cafecache</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/python3</string>
     <string>-m</string>
-    <string>src.scheduler</string>
+    <string>src.cafe_cache_refresh</string>
   </array>
   <key>WorkingDirectory</key><string>__PROJECT_DIR__</string>
-  <key>StartInterval</key><integer>3600</integer>
-  <key>StandardOutPath</key><string>__PROJECT_DIR__/data/scheduler.log</string>
-  <key>StandardErrorPath</key><string>__PROJECT_DIR__/data/scheduler.err.log</string>
+  <key>StartInterval</key><integer>600</integer>
+  <key>StandardOutPath</key><string>__PROJECT_DIR__/data/cafecache.log</string>
+  <key>StandardErrorPath</key><string>__PROJECT_DIR__/data/cafecache.err.log</string>
 </dict>
 </plist>

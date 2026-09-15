@@ -2,7 +2,7 @@
 # Render 대시보드 -> New -> Blueprint -> 이 저장소 선택하면 자동으로 읽힙니다.
 services:
   - type: web
-    name: sorituune-consent
+    name: soritune-consent
     env: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
