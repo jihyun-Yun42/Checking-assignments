@@ -201,7 +201,8 @@ def format_broadcast_tags(group_name: str, check_date: date_cls, report: dict, o
         has_section = True
         lines.append("")
         lines.append(f"{emoji} {title}")
-        lines.append(" ".join(f"@{_tag_name(m, overrides)}" for m in members))
+        for m in members:
+            lines.append(f"@{_tag_name(m, overrides)}")
 
     _section("🚨", "줌/데일리, 내맛 안 하신 분", report["both_missing"])
     _section("🟠", "내맛 안 하신 분", report["naemat_missing"])
