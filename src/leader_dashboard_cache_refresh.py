@@ -1,3 +1,5 @@
+import time
+
 from . import sheets_client, leader_dashboard_client
 
 
@@ -7,7 +9,10 @@ def refresh_all():
         return {}
 
     results = {}
-    for team, members in sheets_client.active_members_by_team().items():
+    for idx, (team, members) in enumerate(sheets_client.active_members_by_team().items()):
+        if idx > 0:
+            # 조별로 약간 텀을 둬서 구글시트 분당 읽기 쿼터를 한 번에 다 쓰지 않게 한다.
+            time.sleep(1)
         leader_like = [m for m in members if m.get("역할") in ("조장", "부조장")]
         if not leader_like:
             continue

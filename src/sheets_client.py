@@ -43,20 +43,37 @@ def _worksheet():
     return _spreadsheet().sheet1
 
 
+# worksheet() 호출은 매번 구글시트 API 읽기 요청을 1회 쓴다(fetch_sheet_metadata).
+# 매 요청마다 반복 호출되는 보조 시트들(현황캐시/하멈말확정매칭/표시이름/기수)을
+# 프로세스 안에서 캐시해두고 재사용하면 이 불필요한 메타데이터 조회와 헤더 검사를
+# 최초 1회로 줄일 수 있다 (분당 읽기 쿼터 초과로 대시보드가 429/500이 나던 원인).
+_ws_cache = {}
+_header_checked = set()
+
+
+def _cached_worksheet(name):
+    if name not in _ws_cache:
+        _ws_cache[name] = _spreadsheet().worksheet(name)
+    return _ws_cache[name]
+
+
 def _get_or_create_worksheet(name, header):
-    sh = _spreadsheet()
     try:
-        ws = sh.worksheet(name)
+        ws = _cached_worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=name, rows=100, cols=max(len(header), 3))
+        ws = _spreadsheet().add_worksheet(title=name, rows=100, cols=max(len(header), 3))
         ws.append_row(header)
+        _ws_cache[name] = ws
+        _header_checked.add(name)
         return ws
 
-    current_header = ws.row_values(1)
-    if current_header != header:
-        if ws.col_count < len(header):
-            ws.resize(cols=len(header))
-        ws.update(values=[header], range_name="A1")
+    if name not in _header_checked:
+        current_header = ws.row_values(1)
+        if current_header != header:
+            if ws.col_count < len(header):
+                ws.resize(cols=len(header))
+            ws.update(values=[header], range_name="A1")
+        _header_checked.add(name)
     return ws
 
 
@@ -129,7 +146,7 @@ def _parse_date(value):
 
 
 def get_cohorts():
-    ws = _spreadsheet().worksheet(_COHORT_SHEET_NAME)
+    ws = _cached_worksheet(_COHORT_SHEET_NAME)
     return ws.get_all_records(numericise_ignore=['all'])
 
 
