@@ -2,6 +2,13 @@
 name = "checking-assignments"
 version = "0.1.0"
 requires-python = ">=3.12"
+dependencies = [
+    "flask",
+    "psycopg2-binary",
+    "python-dotenv",
+    "pytz",
+    "requests",
+]
 
 [tool.vercel]
 entrypoint = "webapp.app:app"
