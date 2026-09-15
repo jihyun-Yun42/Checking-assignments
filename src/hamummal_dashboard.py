@@ -1,11 +1,11 @@
-from . import sheets_client, leader_dashboard_client, hamummal_parser, hamummal_matcher
+from . import db_client, leader_dashboard_client, hamummal_parser, hamummal_matcher
 
 
 def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
 
     result = {}
-    for team, members in sheets_client.active_members_by_team().items():
+    for team, members in db_client.active_members_by_team().items():
         leader_like = [
             m for m in members
             if m.get("역할") in ("조장", "부조장") and m.get("휴대폰번호")
@@ -43,8 +43,8 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
             }
             continue
 
-        confirmed_rows = sheets_client.get_confirmed_matches(team)
-        display_name_overrides = sheets_client.get_display_name_overrides(team)
+        confirmed_rows = db_client.get_confirmed_matches(team)
+        display_name_overrides = db_client.get_display_name_overrides(team)
         match = hamummal_matcher.match_submitters(
             submitters,
             board.get("members") or [],

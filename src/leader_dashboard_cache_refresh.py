@@ -1,15 +1,15 @@
 import time
 
-from . import sheets_client, leader_dashboard_client
+from . import db_client, leader_dashboard_client
 
 
 def refresh_all():
-    cohort = sheets_client.get_active_cohort()
+    cohort = db_client.get_active_cohort()
     if not cohort:
         return {}
 
     results = {}
-    for idx, (team, members) in enumerate(sheets_client.active_members_by_team().items()):
+    for idx, (team, members) in enumerate(db_client.active_members_by_team().items()):
         if idx > 0:
             # 조별로 약간 텀을 둬서 구글시트 분당 읽기 쿼터를 한 번에 다 쓰지 않게 한다.
             time.sleep(1)
@@ -29,7 +29,7 @@ def refresh_all():
             except Exception as e:
                 last_error = str(e)
                 continue
-            sheets_client.set_cache_row(
+            db_client.set_cache_row(
                 fetched["admin"]["group_name"], fetched["missing_text"], fetched["tag_text"]
             )
             results[team] = "ok"

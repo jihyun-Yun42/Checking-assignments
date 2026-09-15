@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from flask import Flask, request, redirect, render_template, flash, session, url_for, jsonify
 
 from src import (
-    config, sheets_client, leader_dashboard_client, hamummal_dashboard,
+    config, db_client, leader_dashboard_client, hamummal_dashboard,
 )
 from src.time_window import TZ, format_kst_timestamp, now_kst
 
@@ -24,7 +24,7 @@ def health():
 
 
 def _active_cohort_or_none():
-    return sheets_client.get_active_cohort()
+    return db_client.get_active_cohort()
 
 
 def _current_member_or_none(cohort=None):
@@ -33,7 +33,7 @@ def _current_member_or_none(cohort=None):
         return None
     if cohort is None:
         cohort = _active_cohort_or_none()
-    return sheets_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
+    return db_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -43,7 +43,7 @@ def phone_entry():
             return redirect(url_for("dashboard"))
         return render_template("phone_entry.html")
 
-    phone = sheets_client.normalize_phone(request.form.get("phone"))
+    phone = db_client.normalize_phone(request.form.get("phone"))
     if not phone:
         flash("휴대폰 번호를 입력해주세요.")
         return redirect(url_for("phone_entry"))
@@ -54,7 +54,7 @@ def phone_entry():
         return redirect(url_for("phone_entry"))
     cohort_name = str(cohort.get("기수명"))
 
-    existing = sheets_client.get_member_by_phone(phone, cohort_name)
+    existing = db_client.get_member_by_phone(phone, cohort_name)
     if existing:
         session.permanent = True
         session["phone"] = phone
@@ -69,12 +69,12 @@ def phone_entry():
         flash("현황판 서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.")
         return redirect(url_for("phone_entry"))
 
-    sheets_client.create_member_signup(
+    db_client.create_member_signup(
         phone, admin_info["name"], admin_info["group_name"], admin_info["role"], cohort_name
     )
     try:
         fetched = leader_dashboard_client.fetch_reports(phone)
-        sheets_client.set_cache_row(
+        db_client.set_cache_row(
             fetched["admin"]["group_name"], fetched["missing_text"], fetched["tag_text"]
         )
     except Exception:
@@ -92,12 +92,12 @@ def dashboard():
     if not phone:
         return redirect(url_for("phone_entry"))
     cohort = _active_cohort_or_none()
-    member = sheets_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
+    member = db_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
     if not member:
         session.pop("phone", None)
         return redirect(url_for("phone_entry"))
 
-    hamummal_active = bool(cohort) and sheets_client.is_hamummal_active(cohort)
+    hamummal_active = bool(cohort) and db_client.is_hamummal_active(cohort)
     hamummal_review_id = _get_latest_review_id() if hamummal_active else None
     return render_template(
         "dashboard.html", member=member, hamummal_active=hamummal_active,
@@ -111,7 +111,7 @@ def dashboard_data():
     if not phone:
         return jsonify(ok=False, redirect=url_for("phone_entry")), 401
     cohort = _active_cohort_or_none()
-    member = sheets_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
+    member = db_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
     if not member:
         session.pop("phone", None)
         return jsonify(ok=False, redirect=url_for("phone_entry")), 401
@@ -122,7 +122,7 @@ def dashboard_data():
         fetched = leader_dashboard_client.fetch_reports(phone)
         # set_cache_row가 방금 쓴 갱신시각을 그대로 돌려주므로, 굳이 시트를 다시
         # 읽어서 확인할 필요가 없다 (구글시트 읽기 쿼터를 아끼기 위함).
-        updated_at = sheets_client.set_cache_row(
+        updated_at = db_client.set_cache_row(
             fetched["admin"]["group_name"], fetched["missing_text"], fetched["tag_text"]
         )
         return jsonify(
@@ -138,7 +138,7 @@ def dashboard_data():
     except Exception:
         error = "현황판 서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요."
 
-    cache_row = sheets_client.get_cache_row(team)
+    cache_row = db_client.get_cache_row(team)
     fallback = None
     if cache_row:
         fallback = {
@@ -155,7 +155,7 @@ def dashboard_rename():
     if not phone:
         return jsonify(ok=False, redirect=url_for("phone_entry")), 401
     cohort = _active_cohort_or_none()
-    member = sheets_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
+    member = db_client.get_member_by_phone(phone, str(cohort.get("기수명")) if cohort else None)
     if not member:
         session.pop("phone", None)
         return jsonify(ok=False, redirect=url_for("phone_entry")), 401
@@ -168,7 +168,7 @@ def dashboard_rename():
     if len(name) > 30:
         return jsonify(ok=False, error="이름이 너무 길어요. 30자 이내로 입력해주세요."), 400
 
-    sheets_client.set_display_name_override(member.get("조"), member_id, name)
+    db_client.set_display_name_override(member.get("조"), member_id, name)
     return jsonify(ok=True)
 
 
@@ -238,8 +238,8 @@ def hamummal_upload():
     cohort = _active_cohort_or_none()
     if not cohort:
         return "지금은 진행 중인 기수가 없어요.", 403
-    if not config.HAMUMMAL_TEST_MODE and not sheets_client.is_hamummal_active(cohort):
-        hs, he = sheets_client.hamummal_window(cohort)
+    if not config.HAMUMMAL_TEST_MODE and not db_client.is_hamummal_active(cohort):
+        hs, he = db_client.hamummal_window(cohort)
         window_str = f" (이번 기수 하멈말 기간: {hs} ~ {he})" if hs and he else ""
         return f"지금은 하멈말 미션 기간이 아니에요.{window_str}", 403
 
@@ -334,7 +334,7 @@ def hamummal_review_confirm_match(review_id):
         "real_name": payload.get("real_name"),
     }
     try:
-        sheets_client.add_confirmed_match(team, member_row, raw)
+        db_client.add_confirmed_match(team, member_row, raw)
     except Exception as e:
         return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
     return jsonify(ok=True)
@@ -356,7 +356,7 @@ def hamummal_review_unconfirm_match(review_id):
     if str(team) != my_team:
         return jsonify(ok=False, error="본인 조의 검토만 수정할 수 있어요."), 403
     try:
-        sheets_client.remove_confirmed_match(team, member_id, raw)
+        db_client.remove_confirmed_match(team, member_id, raw)
     except Exception as e:
         return jsonify(ok=False, error=f"삭제하지 못했습니다: {e}"), 500
     return jsonify(ok=True)
@@ -401,7 +401,7 @@ def hamummal_review_apply(review_id):
                 entry["matched"].append(cand)
                 matched_ids_so_far.add(str(cand["id"]))
                 try:
-                    sheets_client.add_confirmed_match(team, cand, amb.get("raw"))
+                    db_client.add_confirmed_match(team, cand, amb.get("raw"))
                 except Exception:
                     pass
 

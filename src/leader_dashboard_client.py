@@ -3,7 +3,7 @@ from datetime import date as date_cls
 
 import requests
 
-from . import config, sheets_client
+from . import config, db_client
 from .time_window import dashboard_check_date
 
 LOGIN_URL = f"{config.DASHBOARD_BASE_URL}/api/admin.php"
@@ -242,7 +242,7 @@ def fetch_reports(phone: str) -> dict:
         session, admin_info["cohort_id"], check_date.isoformat(), admin_info["group_id"]
     )
     report = compute_report(status_board, check_date)
-    overrides = sheets_client.get_display_name_overrides(admin_info["group_name"])
+    overrides = db_client.get_display_name_overrides(admin_info["group_name"])
     missing_text = missing_list_text(admin_info["group_name"], check_date, report, overrides)
     tag_text = format_broadcast_tags(admin_info["group_name"], check_date, report, overrides)
     return {

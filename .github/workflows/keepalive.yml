@@ -20,15 +20,12 @@ jobs:
 
       - name: 비밀값으로 설정 파일 생성
         run: |
-          mkdir -p config
           cat > .env <<ENVEOF
-          GOOGLE_SERVICE_ACCOUNT_JSON=config/google_service_account.json
-          GOOGLE_SHEET_NAME=${{ secrets.GOOGLE_SHEET_NAME }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
           TIMEZONE=Asia/Seoul
           ENVEOF
-          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > config/google_service_account.json
 
-      - name: 진행 중인 기수인지 확인 (구글시트만 조회, Render는 안 건드림)
+      - name: 진행 중인 기수인지 확인 (DB만 조회, Render는 안 건드림)
         id: cohort
         run: |
           RESULT=$(python -m src.cohort_status)

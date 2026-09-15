@@ -8,9 +8,7 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn webapp.app:app"
     envVars:
-      - key: GOOGLE_SHEET_NAME
-        sync: false
-      - key: GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT
+      - key: DATABASE_URL
         sync: false
       - key: UPLOAD_PASSWORD
         sync: false
