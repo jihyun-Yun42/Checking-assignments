@@ -97,8 +97,6 @@ def _tag_name(m: dict, overrides: dict = None) -> str:
 
 def compute_report(status_board: dict, check_date: date_cls) -> dict:
     ids = config.MISSION_TYPE_IDS
-    thresholds = status_board.get("thresholds") or {}
-    out_threshold = thresholds.get("out", config.OUT_SCORE_THRESHOLD)
     checks = status_board.get("checks") or {}
     is_monday = check_date.weekday() == 0
 
@@ -107,9 +105,6 @@ def compute_report(status_board: dict, check_date: date_cls) -> dict:
 
     for m in status_board.get("members") or []:
         if m.get("member_status") == config.OUT_MEMBER_STATUS:
-            continue
-        score = m.get("current_score")
-        if isinstance(score, (int, float)) and score <= out_threshold:
             continue
 
         member_checks = checks.get(str(m.get("id")))
