@@ -104,9 +104,6 @@ def compute_report(status_board: dict, check_date: date_cls) -> dict:
     speak_missing = []
 
     for m in status_board.get("members") or []:
-        if m.get("member_status") == config.OUT_MEMBER_STATUS:
-            continue
-
         member_checks = checks.get(str(m.get("id")))
         if member_checks is None:
             needs_check.append(m)
