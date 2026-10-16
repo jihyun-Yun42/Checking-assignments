@@ -58,3 +58,27 @@ def extract_submitters(txt_path: str, window_start: datetime, window_end: dateti
             if window_start <= ts <= window_end:
                 submitters.add(m.group("sender").strip())
     return submitters
+
+
+def detect_candidate_dates(txt_path: str, min_senders: int = 20) -> list:
+    """
+    대화 파일 전체를 날짜 구분 없이 훑어서, 하루에 "음성메시지"를 보낸 서로 다른
+    사람이 min_senders(기본 20)명 이상인 날짜들을 찾아 오름차순으로 반환한다.
+    (하멈말이 실제로 진행된 날짜로 추정되는 후보 목록 — 동영상/파일 제출은 세지
+    않고 "음성메시지"만 기준으로 삼는다. 실제 제출 인정 기준(extract_submitters)은
+    그대로 유지되고, 이 함수는 어떤 날짜를 분석할지 후보만 골라낸다.)
+    """
+    senders_by_date = {}
+    with open(txt_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            m = LINE_PATTERN.match(line)
+            if not m:
+                continue
+            content = m.group("content").strip()
+            if "음성메시지" not in content:
+                continue
+            ts = _to_datetime(m.group("date"), m.group("ampm"), m.group("hour"), m.group("minute"))
+            date_str = ts.date().isoformat()
+            senders_by_date.setdefault(date_str, set()).add(m.group("sender").strip())
+    return sorted(d for d, senders in senders_by_date.items() if len(senders) >= min_senders)

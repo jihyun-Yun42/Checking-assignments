@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from flask import Flask, request, redirect, render_template, flash, session, url_for, jsonify
 
 from src import (
-    config, db_client, leader_dashboard_client, hamummal_dashboard,
+    config, db_client, leader_dashboard_client, hamummal_dashboard, hamummal_parser,
 )
 from src.time_window import TZ, format_kst_timestamp, now_kst
 
@@ -99,10 +99,8 @@ def dashboard():
         return redirect(url_for("phone_entry"))
 
     hamummal_visible = bool(cohort) and db_client.is_hamummal_review_visible(cohort)
-    hamummal_review_id = db_client.get_latest_review_id() if hamummal_visible else None
     return render_template(
         "dashboard.html", member=member, hamummal_visible=hamummal_visible,
-        hamummal_review_id=hamummal_review_id,
     )
 
 
@@ -196,6 +194,53 @@ def hamummal_upload_toggle_visibility():
     return redirect(url_for("hamummal_upload"))
 
 
+@app.route("/hamummal-upload/toggle-apply", methods=["POST"])
+def hamummal_upload_toggle_apply():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    cohort = _active_cohort_or_none()
+    if not cohort:
+        return "지금은 진행 중인 기수가 없어요.", 403
+    want_enabled = request.form.get("enabled") == "1"
+    db_client.set_hamummal_apply_enabled(str(cohort.get("기수명")), want_enabled)
+    return redirect(url_for("hamummal_upload"))
+
+
+@app.route("/hamummal-upload/set-start-date", methods=["POST"])
+def hamummal_upload_set_start_date():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    cohort = _active_cohort_or_none()
+    if not cohort:
+        return "지금은 진행 중인 기수가 없어요.", 403
+    date_str = request.form.get("start_date")
+    if date_str:
+        db_client.set_hamummal_start_date(str(cohort.get("기수명")), date_str)
+    return redirect(url_for("hamummal_upload"))
+
+
+@app.route("/hamummal-upload/set-windows", methods=["POST"])
+def hamummal_upload_set_windows():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    cohort = _active_cohort_or_none()
+    if not cohort:
+        return "지금은 진행 중인 기수가 없어요.", 403
+    cohort_name = str(cohort.get("기수명"))
+    saved = 0
+    for key in request.form:
+        if not key.startswith("start__"):
+            continue
+        date_str = key[len("start__"):]
+        start_time = request.form.get(f"start__{date_str}")
+        end_time = request.form.get(f"end__{date_str}")
+        if start_time and end_time:
+            db_client.set_hamummal_date_window(cohort_name, date_str, start_time, end_time)
+            saved += 1
+    flash(f"{saved}개 날짜의 진행 시간을 저장했어요.", "success")
+    return redirect(url_for("hamummal_upload"))
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
@@ -206,48 +251,97 @@ def hamummal_upload():
         if not session.get("hamummal_admin"):
             return "관리자 인증이 필요합니다.", 403
 
-        date_str = request.form.get("date")
-        start_str = request.form.get("start_time")
-        end_str = request.form.get("end_time")
+        cohort_name = str(cohort.get("기수명"))
         f = request.files["chat_file"]
 
         # 업로드 파일은 이 요청 안에서 분석하고 바로 버리면 되므로, 요청 간
         # 유지가 보장되지 않는 임시 디렉토리(/tmp 등)에 저장한다.
-        tmp_fd, save_path = tempfile.mkstemp(prefix=f"{date_str}_", suffix=f"_{f.filename}")
+        tmp_fd, save_path = tempfile.mkstemp(suffix=f"_{f.filename}")
         os.close(tmp_fd)
         f.save(save_path)
 
-        y, mo, d = map(int, date_str.split("-"))
-        sh, sm = map(int, start_str.split(":"))
-        eh, em = map(int, end_str.split(":"))
-        window_start = TZ.localize(datetime(y, mo, d, sh, sm))
-        window_end = TZ.localize(datetime(y, mo, d, eh, em))
-
         try:
-            computed = hamummal_dashboard.compute_review(str(save_path), window_start, window_end, date_str)
+            candidate_dates = hamummal_parser.detect_candidate_dates(str(save_path))
+            date_windows = db_client.get_hamummal_date_windows(cohort_name)
+            processed, skipped = [], []
+            for date_str in candidate_dates:
+                win = date_windows.get(date_str)
+                if not win:
+                    skipped.append(date_str)
+                    continue
+                y, mo, d = map(int, date_str.split("-"))
+                sh, sm = map(int, win["start"].split(":"))
+                eh, em = map(int, win["end"].split(":"))
+                window_start = TZ.localize(datetime(y, mo, d, sh, sm))
+                window_end = TZ.localize(datetime(y, mo, d, eh, em))
+                computed = hamummal_dashboard.compute_review(str(save_path), window_start, window_end, date_str)
+                db_client.save_review(
+                    computed["teams"], date_str, f"{win['start']}~{win['end']}",
+                    submitter_count=computed["submitter_count"],
+                )
+                processed.append(date_str)
         finally:
             try:
                 os.remove(save_path)
             except OSError:
                 pass
-        review_id = db_client.save_review(
-            computed["teams"], date_str, f"{start_str}~{end_str}",
-            submitter_count=computed["submitter_count"],
-        )
-        return redirect(url_for("hamummal_review", review_id=review_id))
+
+        if processed:
+            msg = f"{len(processed)}개 날짜 분석 완료: {', '.join(processed)}"
+            if skipped:
+                msg += f" (진행 시간 미설정으로 건너뜀: {', '.join(skipped)})"
+            flash(msg, "success")
+        elif skipped:
+            flash(f"진행 시간이 설정 안 된 날짜뿐이에요: {', '.join(skipped)}. 아래에서 시간 설정 후 다시 업로드해주세요.")
+        else:
+            flash("음성메시지를 20명 이상 보낸 날짜를 찾지 못했어요.")
+        return redirect(url_for("hamummal_upload"))
+
+    cohort_name = str(cohort.get("기수명"))
+    hamummal_start_date = cohort.get("하멈말시작일")
+    date_window_dates = []
+    if hamummal_start_date:
+        start = datetime.strptime(hamummal_start_date, "%Y-%m-%d").date()
+        today = now_kst().date()
+        existing_windows = db_client.get_hamummal_date_windows(cohort_name)
+        d = start
+        while d <= today:
+            date_str = d.isoformat()
+            win = existing_windows.get(date_str) or {}
+            date_window_dates.append({
+                "date": date_str,
+                "start": win.get("start", ""),
+                "end": win.get("end", ""),
+            })
+            d += timedelta(days=1)
 
     return render_template(
         "hamummal_upload.html",
         is_admin=bool(session.get("hamummal_admin")),
-        default_date=now_kst().date().isoformat(),
-        hamummal_review_id=db_client.get_latest_review_id(),
         hamummal_review_visible=db_client.is_hamummal_review_visible(cohort),
+        hamummal_apply_enabled=db_client.is_hamummal_apply_enabled(cohort),
+        hamummal_start_date=hamummal_start_date,
+        date_window_dates=date_window_dates,
+        has_reviews=db_client.has_any_review(),
+        today_str=now_kst().date().isoformat(),
+    )
+
+
+@app.route("/hamummal-review")
+def hamummal_review_dates():
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    dates = db_client.list_review_dates()
+    return render_template(
+        "hamummal_review_dates.html", dates=dates, today_str=now_kst().date().isoformat(),
     )
 
 
 @app.route("/hamummal-review/<review_id>")
 def hamummal_review(review_id):
-    member = _current_member_or_none()
+    cohort = _active_cohort_or_none()
+    member = _current_member_or_none(cohort)
     if not member:
         return redirect(url_for("phone_entry"))
     my_team = str(member.get("조"))
@@ -262,14 +356,19 @@ def hamummal_review(review_id):
 
     team_applied = (data.get("applied_teams") or {}).get(my_team) or {}
     is_today = data["check_date"] == now_kst().date().isoformat()
+    y, mo, d = map(int, data["check_date"].split("-"))
+    check_date_label = f"{mo}월 {d}일자"
+    window_desc_label = (data["window_desc"] or "").replace("~", " ~ ")
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
         check_date=data["check_date"],
+        check_date_label=check_date_label,
         window_desc=data["window_desc"],
+        window_desc_label=window_desc_label,
         review={my_team: full_review[my_team]},
         submitter_count=data.get("submitter_count", 0),
-        hamummal_test_mode=config.HAMUMMAL_TEST_MODE,
+        apply_enabled=bool(cohort) and db_client.is_hamummal_apply_enabled(cohort),
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
         is_today=is_today,
@@ -332,9 +431,10 @@ def hamummal_review_unconfirm_match(review_id):
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])
 def hamummal_review_apply(review_id):
-    if not config.HAMUMMAL_TEST_MODE:
-        return "지금은 테스트 모드에서만 반영할 수 있어요. 검증이 끝나면 실제 서비스에도 열 예정입니다.", 403
-    member = _current_member_or_none()
+    cohort = _active_cohort_or_none()
+    if not (cohort and db_client.is_hamummal_apply_enabled(cohort)):
+        return "지금은 반영 기능이 꺼져 있어요. 관리자(하멈말 업로드 페이지)에서 켜야 사용할 수 있어요.", 403
+    member = _current_member_or_none(cohort)
     if not member:
         return redirect(url_for("phone_entry"))
     my_team = str(member.get("조"))

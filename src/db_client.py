@@ -136,7 +136,9 @@ def get_cohorts():
             name AS "기수명",
             to_char(start_date, 'YYYY-MM-DD') AS "시작일",
             to_char(end_date, 'YYYY-MM-DD') AS "종료일",
-            hamummal_review_visible AS "하멈말공개여부"
+            hamummal_review_visible AS "하멈말공개여부",
+            hamummal_apply_enabled AS "하멈말반영허용여부",
+            to_char(hamummal_start_date, 'YYYY-MM-DD') AS "하멈말시작일"
         FROM cohorts
         ORDER BY id
         '''
@@ -172,6 +174,58 @@ def set_hamummal_review_visible(cohort_name: str, visible: bool) -> None:
     _query(
         "UPDATE cohorts SET hamummal_review_visible = %s WHERE name = %s",
         (bool(visible), str(cohort_name)),
+        fetch="none",
+    )
+
+
+def is_hamummal_apply_enabled(cohort) -> bool:
+    # "소리튠 조장페이지에 반영하기" 버튼을 실제로 누를 수 있게 할지도 관리자가
+    # 업로드 페이지에서 수동으로 켜고 끈다 (예전엔 HAMUMMAL_TEST_MODE 환경변수로
+    # 배포 전체를 한번에 켜고 껐는데, 개발 중엔 로컬/실서비스를 번갈아 켜보기
+    # 불편해서 DB 토글로 바꿨다).
+    if not cohort:
+        return False
+    return bool(cohort.get("하멈말반영허용여부"))
+
+
+def set_hamummal_apply_enabled(cohort_name: str, enabled: bool) -> None:
+    _query(
+        "UPDATE cohorts SET hamummal_apply_enabled = %s WHERE name = %s",
+        (bool(enabled), str(cohort_name)),
+        fetch="none",
+    )
+
+
+def set_hamummal_start_date(cohort_name: str, date_str: str) -> None:
+    _query(
+        "UPDATE cohorts SET hamummal_start_date = %s WHERE name = %s",
+        (date_str, str(cohort_name)),
+        fetch="none",
+    )
+
+
+def get_hamummal_date_windows(cohort_name: str) -> dict:
+    rows = _query(
+        '''
+        SELECT to_char(check_date, 'YYYY-MM-DD') AS check_date, start_time, end_time
+        FROM hamummal_date_windows WHERE cohort = %s
+        ''',
+        (str(cohort_name),),
+    )
+    return {r["check_date"]: {"start": r["start_time"], "end": r["end_time"]} for r in rows}
+
+
+def set_hamummal_date_window(cohort_name: str, date_str: str, start_time: str, end_time: str) -> None:
+    _query(
+        '''
+        INSERT INTO hamummal_date_windows (cohort, check_date, start_time, end_time, updated_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (cohort, check_date) DO UPDATE SET
+            start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
+            updated_at = EXCLUDED.updated_at
+        ''',
+        (str(cohort_name), date_str, start_time, end_time, now_kst()),
         fetch="none",
     )
 
@@ -362,6 +416,24 @@ def get_latest_review_id():
         fetch="one",
     )
     return row["id"] if row else None
+
+
+def has_any_review() -> bool:
+    row = _query("SELECT 1 FROM hamummal_reviews LIMIT 1", fetch="one")
+    return bool(row)
+
+
+def list_review_dates() -> list:
+    # 한 번의 업로드로 여러 날짜가 한꺼번에 생길 수 있어서, 날짜별로 가장 최근
+    # 업로드 1건씩만 추려서 보여준다 (같은 날짜를 다시 업로드했으면 최신 것으로 교체).
+    return _query(
+        '''
+        SELECT DISTINCT ON (check_date)
+            id, to_char(check_date, 'YYYY-MM-DD') AS check_date
+        FROM hamummal_reviews
+        ORDER BY check_date DESC, created_at DESC
+        '''
+    )
 
 
 def mark_review_team_applied(review_id: str, team: str, apply_results: dict) -> None:

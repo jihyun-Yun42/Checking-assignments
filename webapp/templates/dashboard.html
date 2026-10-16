@@ -78,8 +78,8 @@
     <button type="button" class="refresh-small" id="refresh-btn">새로고침</button>
   </div>
 
-  {% if hamummal_visible and hamummal_review_id %}
-    <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}" class="hamummal-link">📮 하멈말 결과확인</a>
+  {% if hamummal_visible %}
+    <a href="{{ url_for('hamummal_review_dates') }}" class="hamummal-link">📮 하멈말 결과확인</a>
   {% endif %}
 
   <p class="meta" id="meta-text">불러오는 중…</p>

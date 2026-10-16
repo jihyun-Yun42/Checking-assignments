@@ -11,7 +11,10 @@
   h1{font-size:20px;display:flex;align-items:center;gap:8px}
   .today-badge{font-size:12px;font-weight:bold;color:#0a7a2f;background:#eafaf1;
        border:1px solid #8fd6ab;border-radius:999px;padding:3px 10px}
-  .meta{font-size:13px;color:#888;margin-bottom:20px}
+  .meta{font-size:13px;color:#888;margin-bottom:20px;line-height:1.6}
+  .back-link{margin-bottom:6px}
+  .back-link a{font-size:13px;color:#888;text-decoration:none}
+  .back-link a:hover{text-decoration:underline}
   .team{border:1px solid #e2e2e2;border-radius:12px;padding:14px 16px;margin-bottom:16px}
   .team h2{font-size:16px;margin:0 0 8px}
   .row{font-size:14px;padding:3px 0}
@@ -64,12 +67,10 @@
 </style>
 </head>
 <body>
+  <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>하멈말 결과확인{% if is_today %} <span class="today-badge">오늘</span>{% endif %}</h1>
-  {% if is_today %}
-    <p class="meta">오늘({{ check_date }}) 기준 · 진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.</p>
-  {% else %}
-    <p class="meta">마지막으로 업로드된 날짜: {{ check_date }} · 진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.</p>
-  {% endif %}
+  <p class="meta">{{ check_date_label }} (진행 시간 {{ window_desc_label }})<br>
+    {% if is_today %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.{% else %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.{% endif %}</p>
 
   {% if submitter_count == 0 %}
     <p class="warn">⚠️ 업로드한 파일에서 이 날짜·시간대({{ check_date }} {{ window_desc }})에 해당하는 메시지를 하나도 찾지 못했어요.
@@ -142,11 +143,11 @@
   {% endfor %}
 
     <div class="toolbar">
-      <button type="submit"{{ '' if (hamummal_test_mode and not applied) else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
+      <button type="submit"{{ '' if (apply_enabled and not applied) else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
       {% if applied %}
         <p class="test-note">이미 반영된 검토라 버튼이 비활성화되어 있어요.</p>
-      {% elif not hamummal_test_mode %}
-        <p class="test-note">지금은 테스트 모드가 꺼져 있어서 반영 버튼이 비활성화되어 있어요. (검증 끝나면 실제 서비스에 열 예정)</p>
+      {% elif not apply_enabled %}
+        <p class="test-note">지금은 반영 기능이 꺼져 있어요. (관리자가 하멈말 업로드 페이지에서 켜야 사용할 수 있어요)</p>
       {% endif %}
     </div>
   </form>

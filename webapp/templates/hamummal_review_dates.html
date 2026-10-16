@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
+<title>하멈말 결과확인</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
+  h1{font-size:19px}
+  .date-list{margin-top:16px}
+  .date-link{display:flex;align-items:center;justify-content:space-between;gap:8px;
+       padding:12px 14px;border:1px solid #eee;border-radius:10px;margin-bottom:8px;
+       text-decoration:none;color:#222;font-size:14px;font-weight:bold}
+  .date-link:hover{border-color:#3C1E1E}
+  .today-badge{font-size:11px;font-weight:bold;color:#0a7a2f;background:#eafaf1;
+       border:1px solid #8fd6ab;border-radius:999px;padding:2px 8px}
+  .empty{font-size:14px;color:#888;margin-top:20px}
+</style>
+</head>
+<body>
+  <h1>📮 하멈말 결과확인</h1>
+  {% if dates %}
+    <div class="date-list">
+      {% for row in dates %}
+        <a class="date-link" href="{{ url_for('hamummal_review', review_id=row.id) }}">
+          <span>{{ row.check_date }}</span>
+          {% if row.check_date == today_str %}<span class="today-badge">오늘</span>{% endif %}
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">아직 업로드된 결과가 없어요.</p>
+  {% endif %}
+</body>
+</html>

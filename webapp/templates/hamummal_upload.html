@@ -4,30 +4,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
-<title>하멈말 미션 업로드 (관리자)</title>
+<title>하멈말 관리 (관리자)</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
-       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
-  label{display:block;margin-top:16px;font-weight:bold}
-  input{width:100%;padding:10px;font-size:16px;margin-top:6px;box-sizing:border-box}
-  button{margin-top:24px;width:100%;padding:14px;background:#3C1E1E;color:#fff;
-         font-weight:bold;border:none;border-radius:10px;font-size:16px}
+       max-width:520px;margin:40px auto;padding:0 20px;color:#222}
+  h1{font-size:19px;margin-bottom:4px}
+  h2.section-h2{font-size:15px;margin:28px 0 4px;color:#333}
+  label{display:block;margin-top:16px;font-weight:bold;font-size:14px}
+  input[type=password], input[type=date], input[type=file]{
+       width:100%;padding:10px;font-size:16px;margin-top:6px;box-sizing:border-box}
+  button{margin-top:16px;width:auto;padding:10px 16px;background:#3C1E1E;color:#fff;
+         font-weight:bold;border:none;border-radius:10px;font-size:14px;cursor:pointer}
   button:disabled{opacity:.6}
-  p.hint{font-size:13px;color:#888}
+  p.hint{font-size:13px;color:#888;line-height:1.5}
   p.hint a{color:#8a5a00}
   .flash{color:#c0392b;font-weight:bold;font-size:14px;margin-top:10px}
-  .toggle-box{border:1px solid #eee;border-radius:10px;padding:14px;margin-top:20px;
+  .flash.success{color:#0a7a2f}
+  .toggle-box{border:1px solid #eee;border-radius:10px;padding:14px;margin-top:14px;
        display:flex;align-items:center;justify-content:space-between;gap:10px}
   .toggle-box .status{font-size:13px;font-weight:bold}
   .toggle-box .status.on{color:#0a7a2f}
   .toggle-box .status.off{color:#888}
   .toggle-btn{margin-top:0;width:auto;padding:10px 16px;font-size:13px;white-space:nowrap;flex-shrink:0}
   .toggle-btn.off{background:#eee;color:#333}
+  table.window-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  table.window-table th{text-align:left;color:#888;font-weight:normal;padding:4px;border-bottom:1px solid #ddd}
+  table.window-table td{padding:5px 4px;border-bottom:1px solid #eee}
+  table.window-table input[type=time]{width:100%;padding:5px;margin:0;font-size:13px;box-sizing:border-box}
+  tr.today-row{background:#fff8e8}
+  #upload-form{margin-top:10px}
+  #upload-form button{width:100%;padding:14px;font-size:16px;margin-top:20px}
 </style>
 </head>
 <body>
 {% if not is_admin %}
-  <h1>하멈말 업로드 관리자 로그인</h1>
+  <h1>하멈말 관리자 로그인</h1>
   {% with msgs = get_flashed_messages() %}
     {% if msgs %}<p class="flash">{{ msgs[0] }}</p>{% endif %}
   {% endwith %}
@@ -37,9 +48,12 @@
     <button type="submit">입장하기</button>
   </form>
 {% else %}
-  <h1>하멈말 미션 대화 업로드</h1>
-  <p class="hint">업로드하면 가입된 조들의 boot.soritune.com 조원 명단과 자동으로
-     매칭한 뒤, 바로 반영하지 않고 검토 화면을 먼저 보여드려요.</p>
+  <h1>하멈말 관리</h1>
+  {% with cat_messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in cat_messages %}
+      <p class="flash {{ 'success' if category == 'success' else '' }}">{{ message }}</p>
+    {% endfor %}
+  {% endwith %}
 
   <div class="toggle-box">
     <span class="status {{ 'on' if hamummal_review_visible else 'off' }}">
@@ -53,18 +67,54 @@
     </form>
   </div>
 
-  {% if hamummal_review_id %}
-    <p class="hint">이미 검토가 있어요 →
-      <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}">보기</a>
-    </p>
+  <div class="toggle-box">
+    <span class="status {{ 'on' if hamummal_apply_enabled else 'off' }}">
+      "소리튠 조장페이지에 반영하기" 버튼 {{ '켜짐' if hamummal_apply_enabled else '꺼짐' }}
+    </span>
+    <form method="post" action="{{ url_for('hamummal_upload_toggle_apply') }}" style="margin:0">
+      <input type="hidden" name="enabled" value="{{ '0' if hamummal_apply_enabled else '1' }}">
+      <button type="submit" class="toggle-btn {{ '' if hamummal_apply_enabled else 'off' }}">
+        {{ '끄기' if hamummal_apply_enabled else '켜기' }}
+      </button>
+    </form>
+  </div>
+
+  {% if has_reviews %}
+    <p class="hint">업로드된 결과 보기 → <a href="{{ url_for('hamummal_review_dates') }}">날짜 목록</a></p>
   {% endif %}
+
+  <h2 class="section-h2">하멈말 진행 시간 설정</h2>
+  <p class="hint">하멈말 시작일을 정하면 그날부터 오늘까지 날짜별로 진행 시간을 따로 설정할 수 있어요.
+     시간이 설정된 날짜만 업로드할 때 자동으로 분석돼요 (나중에 다시 와서 수정 가능).</p>
+
+  <form method="post" action="{{ url_for('hamummal_upload_set_start_date') }}">
+    <label>하멈말 시작일</label>
+    <input type="date" name="start_date" value="{{ hamummal_start_date or '' }}" required>
+    <button type="submit">{{ '시작일 변경' if hamummal_start_date else '시작일 설정' }}</button>
+  </form>
+
+  {% if date_window_dates %}
+    <form method="post" action="{{ url_for('hamummal_upload_set_windows') }}">
+      <table class="window-table">
+        <thead><tr><th>날짜</th><th>시작 시각</th><th>종료 시각</th></tr></thead>
+        <tbody>
+          {% for row in date_window_dates %}
+            <tr class="{{ 'today-row' if row.date == today_str else '' }}">
+              <td>{{ row.date }}</td>
+              <td><input type="time" name="start__{{ row.date }}" value="{{ row.start }}"></td>
+              <td><input type="time" name="end__{{ row.date }}" value="{{ row.end }}"></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit">진행 시간 저장</button>
+    </form>
+  {% endif %}
+
+  <h2 class="section-h2">하멈말 대화 업로드</h2>
+  <p class="hint">카카오톡 대화 내보내기 파일(여러 날짜 포함 가능)을 올리면, 음성메시지를 20명 이상 보낸
+     날짜를 자동으로 찾아서 — 그 중 위에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.</p>
   <form method="post" enctype="multipart/form-data" id="upload-form">
-    <label>날짜</label>
-    <input type="date" name="date" value="{{ default_date }}" required>
-    <label>오늘 실제 진행 시작 시각</label>
-    <input type="time" name="start_time" value="13:30" required>
-    <label>오늘 실제 진행 종료 시각</label>
-    <input type="time" name="end_time" value="14:01" required>
     <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
     <input type="file" name="chat_file" accept=".txt,.csv" required>
     <button type="submit" id="submit-btn">분석하기</button>
