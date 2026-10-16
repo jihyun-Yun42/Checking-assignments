@@ -98,10 +98,10 @@ def dashboard():
         session.pop("phone", None)
         return redirect(url_for("phone_entry"))
 
-    hamummal_active = bool(cohort) and db_client.is_hamummal_active(cohort)
-    hamummal_review_id = db_client.get_latest_review_id() if hamummal_active else None
+    hamummal_visible = bool(cohort) and db_client.is_hamummal_review_visible(cohort)
+    hamummal_review_id = db_client.get_latest_review_id() if hamummal_visible else None
     return render_template(
-        "dashboard.html", member=member, hamummal_active=hamummal_active,
+        "dashboard.html", member=member, hamummal_visible=hamummal_visible,
         hamummal_review_id=hamummal_review_id,
     )
 
@@ -174,20 +174,37 @@ def dashboard_rename():
     return jsonify(ok=True)
 
 
+@app.route("/hamummal-upload/login", methods=["POST"])
+def hamummal_upload_login():
+    password = request.form.get("password")
+    if password != config.UPLOAD_PASSWORD:
+        flash("비밀번호가 틀렸습니다.")
+        return redirect(url_for("hamummal_upload"))
+    session["hamummal_admin"] = True
+    return redirect(url_for("hamummal_upload"))
+
+
+@app.route("/hamummal-upload/toggle-visibility", methods=["POST"])
+def hamummal_upload_toggle_visibility():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    cohort = _active_cohort_or_none()
+    if not cohort:
+        return "지금은 진행 중인 기수가 없어요.", 403
+    want_visible = request.form.get("visible") == "1"
+    db_client.set_hamummal_review_visible(str(cohort.get("기수명")), want_visible)
+    return redirect(url_for("hamummal_upload"))
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
     if not cohort:
         return "지금은 진행 중인 기수가 없어요.", 403
-    if not config.HAMUMMAL_TEST_MODE and not db_client.is_hamummal_active(cohort):
-        hs, he = db_client.hamummal_window(cohort)
-        window_str = f" (이번 기수 하멈말 기간: {hs} ~ {he})" if hs and he else ""
-        return f"지금은 하멈말 미션 기간이 아니에요.{window_str}", 403
 
     if request.method == "POST":
-        password = request.form.get("password")
-        if password != config.UPLOAD_PASSWORD:
-            return "비밀번호가 틀렸습니다.", 403
+        if not session.get("hamummal_admin"):
+            return "관리자 인증이 필요합니다.", 403
 
         date_str = request.form.get("date")
         start_str = request.form.get("start_time")
@@ -221,8 +238,10 @@ def hamummal_upload():
 
     return render_template(
         "hamummal_upload.html",
+        is_admin=bool(session.get("hamummal_admin")),
         default_date=now_kst().date().isoformat(),
         hamummal_review_id=db_client.get_latest_review_id(),
+        hamummal_review_visible=db_client.is_hamummal_review_visible(cohort),
     )
 
 
@@ -242,6 +261,7 @@ def hamummal_review(review_id):
         return f"이 검토에는 '{my_team}'의 데이터가 없어요. 조장/부조장 번호가 시트에 등록돼 있는지 확인해주세요.", 404
 
     team_applied = (data.get("applied_teams") or {}).get(my_team) or {}
+    is_today = data["check_date"] == now_kst().date().isoformat()
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -252,6 +272,7 @@ def hamummal_review(review_id):
         hamummal_test_mode=config.HAMUMMAL_TEST_MODE,
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
+        is_today=is_today,
     )
 
 

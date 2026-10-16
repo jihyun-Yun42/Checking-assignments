@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import psycopg2
 import psycopg2.extras
@@ -135,7 +135,8 @@ def get_cohorts():
         SELECT
             name AS "기수명",
             to_char(start_date, 'YYYY-MM-DD') AS "시작일",
-            to_char(end_date, 'YYYY-MM-DD') AS "종료일"
+            to_char(end_date, 'YYYY-MM-DD') AS "종료일",
+            hamummal_review_visible AS "하멈말공개여부"
         FROM cohorts
         ORDER BY id
         '''
@@ -158,22 +159,21 @@ def get_active_cohort(today=None):
     return None
 
 
-def hamummal_window(cohort):
-    start = _parse_date(cohort.get("시작일")) if cohort else None
-    if not start:
-        return None, None
-    this_week_monday = start - timedelta(days=start.weekday())
-    hamummal_start = this_week_monday + timedelta(days=7)
-    hamummal_end = hamummal_start + timedelta(days=20)
-    return hamummal_start, hamummal_end
-
-
-def is_hamummal_active(cohort, today=None):
+def is_hamummal_review_visible(cohort) -> bool:
+    # 예전엔 기수 시작일 기준으로 자동 계산한 기간(hamummal_window)으로 노출 여부를
+    # 판단했는데, 지금은 관리자가 하멈말 업로드 페이지에서 수동으로 켜고 끄는
+    # 방식으로 바뀌었다 (기수별 cohorts.hamummal_review_visible 컬럼).
     if not cohort:
         return False
-    today = today or now_kst().date()
-    start, end = hamummal_window(cohort)
-    return bool(start and end and start <= today <= end)
+    return bool(cohort.get("하멈말공개여부"))
+
+
+def set_hamummal_review_visible(cohort_name: str, visible: bool) -> None:
+    _query(
+        "UPDATE cohorts SET hamummal_review_visible = %s WHERE name = %s",
+        (bool(visible), str(cohort_name)),
+        fetch="none",
+    )
 
 
 def get_active_members():

@@ -18,9 +18,6 @@
   .hamummal-link{display:block;margin-top:14px;padding:10px 14px;border-radius:10px;
        background:#fff3e0;color:#8a5a00;font-size:13px;font-weight:bold;text-decoration:none;
        border:1px solid #f0c36d}
-  .hamummal-block{margin-top:0}
-  .hamummal-link-secondary{display:block;margin-top:6px;padding:0 2px;font-size:12px;
-       color:#a67c00;text-decoration:underline;text-underline-offset:2px}
 
   a.refresh-small, button.refresh-small{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
        padding:7px 12px;border-radius:8px;font-size:12px;font-weight:bold;
@@ -81,15 +78,8 @@
     <button type="button" class="refresh-small" id="refresh-btn">새로고침</button>
   </div>
 
-  {% if hamummal_active %}
-    {% if hamummal_review_id %}
-      <div class="hamummal-block">
-        <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}" class="hamummal-link">📮 하멈말 제출 현황 확인</a>
-        <a href="{{ url_for('hamummal_upload') }}" class="hamummal-link-secondary">파일 다시 업로드하기</a>
-      </div>
-    {% else %}
-      <a href="{{ url_for('hamummal_upload') }}" class="hamummal-link">📮 하멈말 미션 업로드</a>
-    {% endif %}
+  {% if hamummal_visible and hamummal_review_id %}
+    <a href="{{ url_for('hamummal_review', review_id=hamummal_review_id) }}" class="hamummal-link">📮 하멈말 결과확인</a>
   {% endif %}
 
   <p class="meta" id="meta-text">불러오는 중…</p>

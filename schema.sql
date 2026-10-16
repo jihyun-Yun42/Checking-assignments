@@ -19,8 +19,14 @@ CREATE TABLE IF NOT EXISTS cohorts (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,        -- 기수명
     start_date DATE,                  -- 시작일
-    end_date DATE                     -- 종료일
+    end_date DATE,                    -- 종료일
+    hamummal_review_visible BOOLEAN NOT NULL DEFAULT false  -- 하멈말 결과확인 공개 여부 (관리자가 수동 on/off)
 );
+
+-- 이미 cohorts 테이블이 있는 기존 DB에는 위 CREATE TABLE이 적용되지 않으므로
+-- (CREATE TABLE IF NOT EXISTS는 기존 테이블에 컬럼을 추가해주지 않음) 아래 ALTER를
+-- Supabase SQL Editor에서 한 번 실행해줘야 한다.
+ALTER TABLE cohorts ADD COLUMN IF NOT EXISTS hamummal_review_visible BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS cache_rows (
     team TEXT PRIMARY KEY,                          -- 조

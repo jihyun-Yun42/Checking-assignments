@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
-<title>하멈말 검토</title>
+<title>하멈말 결과확인</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
        max-width:640px;margin:30px auto;padding:0 20px;color:#222}
-  h1{font-size:20px}
+  h1{font-size:20px;display:flex;align-items:center;gap:8px}
+  .today-badge{font-size:12px;font-weight:bold;color:#0a7a2f;background:#eafaf1;
+       border:1px solid #8fd6ab;border-radius:999px;padding:3px 10px}
   .meta{font-size:13px;color:#888;margin-bottom:20px}
   .team{border:1px solid #e2e2e2;border-radius:12px;padding:14px 16px;margin-bottom:16px}
   .team h2{font-size:16px;margin:0 0 8px}
@@ -62,8 +64,12 @@
 </style>
 </head>
 <body>
-  <h1>하멈말 검토 ({{ check_date }})</h1>
-  <p class="meta">진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.</p>
+  <h1>하멈말 결과확인{% if is_today %} <span class="today-badge">오늘</span>{% endif %}</h1>
+  {% if is_today %}
+    <p class="meta">오늘({{ check_date }}) 기준 · 진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.</p>
+  {% else %}
+    <p class="meta">마지막으로 업로드된 날짜: {{ check_date }} · 진행 시간: {{ window_desc }} · 아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.</p>
+  {% endif %}
 
   {% if submitter_count == 0 %}
     <p class="warn">⚠️ 업로드한 파일에서 이 날짜·시간대({{ check_date }} {{ window_desc }})에 해당하는 메시지를 하나도 찾지 못했어요.
@@ -87,7 +93,7 @@
       <div class="matched-list">
         {% for m in data.matched %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m.nickname }} ({{ m.real_name }})</span>
+            <span>✅ {{ m.nickname }} ({{ m.real_name }}){% if m.get('_matched_raw') %} · {{ m.get('_matched_raw') }}{% endif %}</span>
             {% if not applied %}
               <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
                 title="우리 조원 아님" aria-label="우리 조원 아님">✕</button>
@@ -140,7 +146,7 @@
       {% if applied %}
         <p class="test-note">이미 반영된 검토라 버튼이 비활성화되어 있어요.</p>
       {% elif not hamummal_test_mode %}
-        <p class="test-note">저금은 테스트 모드가 꺼져 있어서 반영 버튼이 비활성화되어 있어요. (검증 끝나면 실제 서비스에 열 예정)</p>
+        <p class="test-note">지금은 테스트 모드가 꺼져 있어서 반영 버튼이 비활성화되어 있어요. (검증 끝나면 실제 서비스에 열 예정)</p>
       {% endif %}
     </div>
   </form>
@@ -338,7 +344,7 @@
               row.setAttribute('data-member-id', memberId);
 
               var span = document.createElement('span');
-              span.textContent = '✅ ' + nickname + ' (' + realName + ')';
+              span.textContent = '✅ ' + nickname + ' (' + realName + ')' + (raw ? ' · ' + raw : '');
               row.appendChild(span);
 
               cb.style.display = 'none';
@@ -386,7 +392,8 @@
           var names = [];
           teamEl.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
             var span = row.querySelector('span');
-            names.push(span ? span.textContent.replace('✅', '').trim() : '');
+            var text = span ? span.textContent.replace('✅', '').trim() : '';
+            names.push(text.split(' · ')[0].trim());
           });
           if (names.length === 0) return;
           total += names.length;
