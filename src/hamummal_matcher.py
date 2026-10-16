@@ -90,6 +90,15 @@ def match_submitters(
             name_hit = bool(tokens & meta["name_tokens"])
             if not (nick_hit or name_hit):
                 continue
+            if nick_hit and not name_hit:
+                # 닉네임만 겹치고 실명은 안 겹치는 경우 — raw에 이 사람의
+                # 실명이 아닌 다른 토큰(= 다른 사람의 실명일 가능성이 큰 텍스트)
+                # 이 더 있으면 닉네임이 같을 뿐인 다른 사람으로 보고 후보에서
+                # 아예 뺀다. raw가 정말 닉네임 하나뿐이면(leftover 없음) 실명
+                # 정보가 없을 뿐이니 계속 확인필요 후보로 남긴다.
+                leftover = tokens - meta["nick_tokens"]
+                if leftover:
+                    continue
             score = 2 if (nick_hit and name_hit) else 1
             candidates.append((score, name_hit, meta["member"], item["raw"]))
 
@@ -129,12 +138,23 @@ def match_submitters(
             continue
         member = meta["member"]
         if all_tokens_cache:
-            member_tokens = meta["nick_tokens"] | meta["name_tokens"]
-            if member_tokens:
+            nick_tokens = meta["nick_tokens"]
+            name_tokens = meta["name_tokens"]
+            if nick_tokens or name_tokens:
                 for raw, raw_tokens in all_tokens_cache:
-                    if raw_tokens & member_tokens:
-                        member["_known_raw"] = raw
-                        break
+                    nick_hit = bool(raw_tokens & nick_tokens)
+                    name_hit = bool(raw_tokens & name_tokens)
+                    if not (nick_hit or name_hit):
+                        continue
+                    if nick_hit and not name_hit:
+                        # 위 확인필요 후보 선정과 같은 기준: 닉네임만 겹치고
+                        # 실명이 다른(원문에 다른 실명 토큰이 더 있는) 경우는
+                        # 같은 사람이 아닐 수 있으니 식별된 걸로 치지 않는다.
+                        leftover = raw_tokens - nick_tokens
+                        if leftover:
+                            continue
+                    member["_known_raw"] = raw
+                    break
         unmatched_members.append(member)
 
     return {"matched": matched, "unmatched_members": unmatched_members, "ambiguous": ambiguous}
