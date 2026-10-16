@@ -377,6 +377,15 @@
 
                 var emptyEl = teamEl.querySelector('.matched-empty');
                 if (emptyEl) emptyEl.remove();
+
+                var fixedDates = data.fixed_dates || [];
+                if (fixedDates.length > 1) {
+                  alert(
+                    nickname + ' (' + realName + ') → ' + newName + '\n\n' +
+                    '이미 올라온 파일에 있던 다른 날짜(' + fixedDates.length + '개)의 미제출도 ' +
+                    '같이 "' + newName + '"으로 고쳐서 제출 완료로 바꿨어요.\n(' + fixedDates.join(', ') + ')'
+                  );
+                }
               })
               .catch(function () {
                 alert('네트워크 오류로 저장하지 못했습니다.');

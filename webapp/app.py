@@ -487,20 +487,61 @@ def hamummal_review_fix_name(review_id):
     except Exception as e:
         return jsonify(ok=False, error=f"이름 저장 실패: {e}"), 500
 
+    target["_matched_raw"] = display_name
     entry["unmatched_members"] = [
         m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
     ]
-    target["_matched_raw"] = display_name
     entry.setdefault("matched", []).append(target)
 
+    # 한 번의 업로드로 여러 날짜가 한꺼번에 분석되는 경우가 많아서(업로드 1건
+    # = 검토 row 여러 개), 이 조원이 "이 조"의 다른 날짜에서도 아직 미제출로
+    # 남아 있다면 전부 같이 고쳐준다 — 다음 업로드를 기다리지 않고 이미
+    # 업로드한 파일을 기준으로 바로 반영되도록.
     try:
-        # 지금 보고 있는 이 검토 결과 자체도 바로 바뀌어야 하므로, DB에 저장된
-        # 검토 JSON에서도 이 조원을 미제출 → 제출 완료로 옮겨서 다시 저장한다.
-        db_client.update_review_team_entry(review_id, team, entry)
+        other_rows = db_client.list_team_reviews(team)
     except Exception as e:
-        return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+        return jsonify(ok=False, error=f"다른 날짜를 확인하지 못했습니다: {e}"), 500
 
-    return jsonify(ok=True, member=target)
+    fixed_dates = []
+    for row in other_rows:
+        if str(row["id"]) == str(review_id):
+            # 지금 보고 있는 이 검토는 위에서 이미 옮겨둔 target/entry를 그대로 쓴다.
+            try:
+                db_client.update_review_team_entry(review_id, team, entry)
+            except Exception as e:
+                return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+            fixed_dates.append(row["check_date"])
+            continue
+
+        if (row.get("applied_teams") or {}).get(team):
+            continue  # 이미 반영된 날짜는 건드리지 않음
+
+        row_entry = (row.get("review") or {}).get(team)
+        if not row_entry:
+            continue
+
+        row_target = None
+        for m in row_entry.get("unmatched_members") or []:
+            if str(m.get("id")) == str(member_id):
+                row_target = m
+                break
+        if row_target is None:
+            continue
+
+        row_entry["unmatched_members"] = [
+            m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
+        ]
+        row_target["_matched_raw"] = display_name
+        row_entry.setdefault("matched", []).append(row_target)
+
+        try:
+            db_client.update_review_team_entry(row["id"], team, row_entry)
+        except Exception as e:
+            return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+
+        fixed_dates.append(row["check_date"])
+
+    return jsonify(ok=True, member=target, fixed_dates=sorted(fixed_dates))
 
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])

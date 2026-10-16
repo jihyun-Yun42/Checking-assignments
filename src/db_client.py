@@ -436,6 +436,23 @@ def list_review_dates() -> list:
     )
 
 
+def list_team_reviews(team: str) -> list:
+    # 이 조 데이터가 들어있는 모든 검토를 날짜순으로 반환한다. 한 번의 업로드로
+    # 여러 날짜(check_date)가 한꺼번에 분석돼서 각각 별도의 row로 저장되므로,
+    # fix-name에서 같은 조원이 여러 날짜에 걸쳐 미제출로 남아있을 때 전부
+    # 한꺼번에 고치려면 이렇게 team 데이터가 있는 모든 row를 가져와야 한다
+    # ("?" 연산자: review jsonb가 team을 top-level 키로 가지고 있는지 검사).
+    return _query(
+        '''
+        SELECT id, to_char(check_date, 'YYYY-MM-DD') AS check_date, review, applied_teams
+        FROM hamummal_reviews
+        WHERE review ? %s
+        ORDER BY check_date
+        ''',
+        (str(team),),
+    )
+
+
 def update_review_team_entry(review_id: str, team: str, entry: dict) -> None:
     # 미제출로 뜬 조원의 이름을 "결과확인" 페이지에서 바로 고쳤을 때처럼, 이미
     # 저장된 검토의 특정 조 데이터만 콕 집어서 덮어쓸 때 쓴다 (jsonb_set으로
