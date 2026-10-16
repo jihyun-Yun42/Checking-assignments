@@ -254,6 +254,14 @@ def hamummal_upload():
         cohort_name = str(cohort.get("기수명"))
         f = request.files["chat_file"]
 
+        # 업로드 폼에 있는 "오늘 진행 시간"을 올리기 직전에 바로 고칠 수 있게
+        # 해뒀으니, 분석 전에 먼저 그 값으로 오늘 날짜 설정을 저장해둔다.
+        today_str = now_kst().date().isoformat()
+        today_start_time = request.form.get("today_start_time")
+        today_end_time = request.form.get("today_end_time")
+        if today_start_time and today_end_time:
+            db_client.set_hamummal_date_window(cohort_name, today_str, today_start_time, today_end_time)
+
         # 업로드 파일은 이 요청 안에서 분석하고 바로 버리면 되므로, 요청 간
         # 유지가 보장되지 않는 임시 디렉토리(/tmp 등)에 저장한다.
         tmp_fd, save_path = tempfile.mkstemp(suffix=f"_{f.filename}")
@@ -299,21 +307,26 @@ def hamummal_upload():
 
     cohort_name = str(cohort.get("기수명"))
     hamummal_start_date = cohort.get("하멈말시작일")
+    today_str = now_kst().date().isoformat()
+    existing_windows = db_client.get_hamummal_date_windows(cohort_name)
+    default_start, default_end = "13:30", "14:01"
+
     date_window_dates = []
     if hamummal_start_date:
         start = datetime.strptime(hamummal_start_date, "%Y-%m-%d").date()
         today = now_kst().date()
-        existing_windows = db_client.get_hamummal_date_windows(cohort_name)
         d = start
         while d <= today:
             date_str = d.isoformat()
             win = existing_windows.get(date_str) or {}
             date_window_dates.append({
                 "date": date_str,
-                "start": win.get("start", ""),
-                "end": win.get("end", ""),
+                "start": win.get("start") or default_start,
+                "end": win.get("end") or default_end,
             })
             d += timedelta(days=1)
+
+    today_window = existing_windows.get(today_str) or {}
 
     return render_template(
         "hamummal_upload.html",
@@ -323,7 +336,9 @@ def hamummal_upload():
         hamummal_start_date=hamummal_start_date,
         date_window_dates=date_window_dates,
         has_reviews=db_client.has_any_review(),
-        today_str=now_kst().date().isoformat(),
+        today_str=today_str,
+        today_start_time=today_window.get("start") or default_start,
+        today_end_time=today_window.get("end") or default_end,
     )
 
 

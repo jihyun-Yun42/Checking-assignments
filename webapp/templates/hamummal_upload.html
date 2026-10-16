@@ -34,6 +34,10 @@
   tr.today-row{background:#fff8e8}
   #upload-form{margin-top:10px}
   #upload-form button{width:100%;padding:14px;font-size:16px;margin-top:20px}
+  .inline-time-row{display:flex;gap:10px;margin-top:10px}
+  .inline-time-row div{flex:1}
+  .inline-time-row label{font-size:12px;font-weight:normal;color:#888;margin-top:0}
+  .inline-time-row input[type=time]{width:100%;padding:8px;margin-top:4px;font-size:14px;box-sizing:border-box}
 </style>
 </head>
 <body>
@@ -113,8 +117,19 @@
 
   <h2 class="section-h2">하멈말 대화 업로드</h2>
   <p class="hint">카카오톡 대화 내보내기 파일(여러 날짜 포함 가능)을 올리면, 음성메시지를 20명 이상 보낸
-     날짜를 자동으로 찾아서 — 그 중 위에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.</p>
+     날짜를 자동으로 찾아서 — 그 중 위에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.
+     오늘({{ today_str }}) 진행 시간은 아래에서 올리기 전에 바로 고칠 수 있어요.</p>
   <form method="post" enctype="multipart/form-data" id="upload-form">
+    <div class="inline-time-row">
+      <div>
+        <label>오늘 시작 시각</label>
+        <input type="time" name="today_start_time" value="{{ today_start_time }}">
+      </div>
+      <div>
+        <label>오늘 종료 시각</label>
+        <input type="time" name="today_end_time" value="{{ today_end_time }}">
+      </div>
+    </div>
     <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
     <input type="file" name="chat_file" accept=".txt,.csv" required>
     <button type="submit" id="submit-btn">분석하기</button>
