@@ -326,6 +326,7 @@ def hamummal_upload():
             })
             d += timedelta(days=1)
 
+    date_window_dates.reverse()  # 최근 날짜가 위로 오도록
     today_window = existing_windows.get(today_str) or {}
 
     return render_template(
@@ -442,6 +443,64 @@ def hamummal_review_unconfirm_match(review_id):
     except Exception as e:
         return jsonify(ok=False, error=f"삭제하지 못했습니다: {e}"), 500
     return jsonify(ok=True)
+
+
+@app.route("/hamummal-review/<review_id>/fix-name", methods=["POST"])
+def hamummal_review_fix_name(review_id):
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    data = db_client.load_review(review_id)
+    if not data:
+        return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다."), 404
+
+    payload = request.get_json(silent=True) or {}
+    team = payload.get("team")
+    member_id = payload.get("member_id")
+    display_name = str(payload.get("display_name") or "").strip()
+    if not (team and member_id and display_name):
+        return jsonify(ok=False, error="필수 값이 없습니다."), 400
+    if str(team) != my_team:
+        return jsonify(ok=False, error="본인 조의 검토만 수정할 수 있어요."), 403
+    if (data.get("applied_teams") or {}).get(my_team):
+        return jsonify(ok=False, error="이미 반영된 검토라 이름을 고칠 수 없어요."), 409
+
+    full_review = data["review"]
+    entry = full_review.get(team)
+    if not entry:
+        return jsonify(ok=False, error="이 검토에는 해당 조 데이터가 없어요."), 404
+
+    target = None
+    for m in entry.get("unmatched_members") or []:
+        if str(m.get("id")) == str(member_id):
+            target = m
+            break
+    if target is None:
+        return jsonify(ok=False, error="미제출 목록에서 해당 조원을 찾지 못했어요."), 404
+
+    try:
+        # 카카오톡에서 실제로 쓰는 이름을 등록해두면, 다음 업로드부터는 자동으로
+        # 매칭된다 (display_name_overrides — 기존 대시보드 "이름 수정" 기능과 같은 테이블).
+        db_client.set_display_name_override(team, member_id, display_name)
+    except Exception as e:
+        return jsonify(ok=False, error=f"이름 저장 실패: {e}"), 500
+
+    entry["unmatched_members"] = [
+        m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
+    ]
+    target["_matched_raw"] = display_name
+    entry.setdefault("matched", []).append(target)
+
+    try:
+        # 지금 보고 있는 이 검토 결과 자체도 바로 바뀌어야 하므로, DB에 저장된
+        # 검토 JSON에서도 이 조원을 미제출 → 제출 완료로 옮겨서 다시 저장한다.
+        db_client.update_review_team_entry(review_id, team, entry)
+    except Exception as e:
+        return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+
+    return jsonify(ok=True, member=target)
 
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])

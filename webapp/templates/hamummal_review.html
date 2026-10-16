@@ -47,6 +47,13 @@
        justify-content:center}
   .mark-submitted-btn:hover{color:#0a7a2f}
 
+  .fixname-btn{flex-shrink:0;border:none;background:none;color:#bbb;
+       font-size:14px;line-height:1;padding:2px 4px;
+       cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
+       justify-content:center}
+  .fixname-btn:hover{color:#8a5a00}
+  .row-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
        align-items:center;justify-content:center;padding:20px;z-index:100}
   .modal-overlay[hidden]{display:none}
@@ -131,9 +138,14 @@
           <div class="row miss" data-member-id="{{ m.id }}">
             <span>{{ m.nickname }} ({{ m.real_name }})</span>
             {% if not applied %}
-              <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
-                title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
+              <span class="row-actions">
+                <button type="button" class="fixname-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
+                  title="카카오톡 이름이 달라요 (이름 수정)" aria-label="카카오톡 이름이 달라요 (이름 수정)">✏️</button>
+                <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
+                  title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
+              </span>
             {% endif %}
           </div>
         {% endfor %}
@@ -169,6 +181,7 @@
     (function () {
       var CONFIRM_MATCH_URL = {{ url_for('hamummal_review_confirm_match', review_id=review_id) | tojson }};
       var UNCONFIRM_MATCH_URL = {{ url_for('hamummal_review_unconfirm_match', review_id=review_id) | tojson }};
+      var FIX_NAME_URL = {{ url_for('hamummal_review_fix_name', review_id=review_id) | tojson }};
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -304,6 +317,75 @@
         });
       }
       wireMarkSubmittedButtons();
+
+      function wireFixNameButtons() {
+        document.querySelectorAll('.unmatched-list .fixname-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var team = btn.getAttribute('data-team');
+            var memberId = btn.getAttribute('data-member-id');
+            var nickname = btn.getAttribute('data-nickname');
+            var realName = btn.getAttribute('data-real-name');
+
+            var newName = window.prompt(
+              nickname + ' (' + realName + ')\n\n카카오톡에서 실제로 쓰는 이름을 입력해주세요.\n(다음부터는 이 이름으로 자동 매칭돼요)',
+              nickname
+            );
+            if (newName === null) return;
+            newName = newName.trim();
+            if (!newName) return;
+
+            var row = btn.closest('.row.miss');
+            var teamEl = btn.closest('.team');
+            btn.disabled = true;
+
+            fetch(FIX_NAME_URL, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ team: team, member_id: memberId, display_name: newName }),
+            })
+              .then(function (res) { return res.json(); })
+              .then(function (data) {
+                if (!data.ok) {
+                  alert(data.error || '저장하지 못했습니다.');
+                  btn.disabled = false;
+                  return;
+                }
+
+                row.remove();
+                bumpCount(teamEl, '.unmatched-count', -1);
+                var emptyMissEl = teamEl.querySelector('.unmatched-empty');
+                if (emptyMissEl) emptyMissEl.remove();
+
+                var matchedList = teamEl.querySelector('.matched-list');
+                var newRow = document.createElement('div');
+                newRow.className = 'row ok';
+                newRow.setAttribute('data-member-id', memberId);
+
+                var span = document.createElement('span');
+                span.textContent = '✅ ' + nickname + ' (' + realName + ') · ' + newName;
+                newRow.appendChild(span);
+
+                newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
+                  newRow.remove();
+                  bumpCount(teamEl, '.matched-count', -1);
+                  addHiddenExcludeField(team, memberId);
+                }));
+
+                matchedList.appendChild(newRow);
+                bumpCount(teamEl, '.matched-count', 1);
+
+                var emptyEl = teamEl.querySelector('.matched-empty');
+                if (emptyEl) emptyEl.remove();
+              })
+              .catch(function () {
+                alert('네트워크 오류로 저장하지 못했습니다.');
+                btn.disabled = false;
+              });
+          });
+        });
+      }
+      wireFixNameButtons();
 
       document.querySelectorAll('.amb-checkbox').forEach(function (cb) {
         cb.addEventListener('change', function () {

@@ -436,6 +436,21 @@ def list_review_dates() -> list:
     )
 
 
+def update_review_team_entry(review_id: str, team: str, entry: dict) -> None:
+    # 미제출로 뜬 조원의 이름을 "결과확인" 페이지에서 바로 고쳤을 때처럼, 이미
+    # 저장된 검토의 특정 조 데이터만 콕 집어서 덮어쓸 때 쓴다 (jsonb_set으로
+    # review 컬럼 중 해당 조 키만 교체 — 다른 조 데이터는 건드리지 않음).
+    _query(
+        '''
+        UPDATE hamummal_reviews
+        SET review = jsonb_set(review, ARRAY[%s], %s::jsonb)
+        WHERE id = %s
+        ''',
+        (str(team), json.dumps(entry, ensure_ascii=False), review_id),
+        fetch="none",
+    )
+
+
 def mark_review_team_applied(review_id: str, team: str, apply_results: dict) -> None:
     # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
     # 검토 전체가 아니라 조 단위로 기록한다. jsonb 병합 연산자(||)로
