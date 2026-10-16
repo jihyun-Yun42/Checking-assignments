@@ -224,19 +224,6 @@ def hamummal_upload_toggle_apply():
     return redirect(url_for("hamummal_upload"))
 
 
-@app.route("/hamummal-upload/set-start-date", methods=["POST"])
-def hamummal_upload_set_start_date():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
-    cohort = _active_cohort_or_none()
-    if not cohort:
-        return "지금은 진행 중인 기수가 없어요.", 403
-    date_str = request.form.get("start_date")
-    if date_str:
-        db_client.set_hamummal_start_date(str(cohort.get("기수명")), date_str)
-    return redirect(url_for("hamummal_upload"))
-
-
 @app.route("/hamummal-upload/set-windows", methods=["POST"])
 def hamummal_upload_set_windows():
     if not session.get("hamummal_admin"):
@@ -322,35 +309,22 @@ def hamummal_upload():
         return redirect(url_for("hamummal_upload"))
 
     cohort_name = str(cohort.get("기수명"))
-    hamummal_start_date = cohort.get("하멈말시작일")
     today_str = now_kst().date().isoformat()
     existing_windows = db_client.get_hamummal_date_windows(cohort_name)
     default_start, default_end = DEFAULT_HAMUMMAL_START, DEFAULT_HAMUMMAL_END
 
-    # 표는 "오늘"까지가 아니라 실제로 하멈말이 진행된(=분석된) 마지막 날짜까지만
-    # 보여준다 — 그래야 아직 하멈말을 하지도 않은 먼 미래 날짜까지 쭉 나오지 않는다.
-    last_analyzed_date = db_client.get_max_review_date()
-    today_date = now_kst().date()
-    if last_analyzed_date:
-        end_date = min(datetime.strptime(last_analyzed_date, "%Y-%m-%d").date(), today_date)
-    else:
-        end_date = today_date
-
+    # "시작일"을 따로 정해두지 않아도, 실제로 분석된(=하멈말이 진행된) 날짜들을
+    # 기준으로 바로 진행 시간을 설정할 수 있게 한다 (list_review_dates가 최근
+    # 날짜부터 내림차순으로 돌려준다).
     date_window_dates = []
-    if hamummal_start_date:
-        start = datetime.strptime(hamummal_start_date, "%Y-%m-%d").date()
-        d = start
-        while d <= end_date:
-            date_str = d.isoformat()
-            win = existing_windows.get(date_str) or {}
-            date_window_dates.append({
-                "date": date_str,
-                "start": win.get("start") or default_start,
-                "end": win.get("end") or default_end,
-            })
-            d += timedelta(days=1)
-
-    date_window_dates.reverse()  # 최근 날짜가 위로 오도록
+    for row in db_client.list_review_dates():
+        date_str = row["check_date"]
+        win = existing_windows.get(date_str) or {}
+        date_window_dates.append({
+            "date": date_str,
+            "start": win.get("start") or default_start,
+            "end": win.get("end") or default_end,
+        })
     today_window = existing_windows.get(today_str) or {}
 
     return render_template(
@@ -358,7 +332,6 @@ def hamummal_upload():
         is_admin=bool(session.get("hamummal_admin")),
         hamummal_review_visible=db_client.is_hamummal_review_visible(cohort),
         hamummal_apply_enabled=db_client.is_hamummal_apply_enabled(cohort),
-        hamummal_start_date=hamummal_start_date,
         date_window_dates=date_window_dates,
         has_reviews=db_client.has_any_review(),
         today_str=today_str,
@@ -461,6 +434,70 @@ def hamummal_review(review_id):
     )
 
 
+def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
+    try:
+        other_rows = db_client.list_team_reviews(team)
+    except Exception:
+        return []
+
+    fixed_dates = []
+    for row in other_rows:
+        if str(row["id"]) == str(review_id):
+            continue  # 지금 보고 있는 날짜는 호출한 쪽에서 이미 처리함
+
+        if (row.get("applied_teams") or {}).get(team):
+            continue  # 이미 반영된 날짜는 건드리지 않음
+
+        row_entry = (row.get("review") or {}).get(team)
+        if not row_entry:
+            continue
+
+        row_target = None
+        for m in row_entry.get("unmatched_members") or []:
+            if str(m.get("id")) == str(member_id):
+                row_target = m
+                break
+        if row_target is None:
+            for amb in row_entry.get("ambiguous") or []:
+                for c in amb.get("candidates") or []:
+                    if str(c.get("id")) == str(member_id):
+                        row_target = c
+                        break
+                if row_target is not None:
+                    break
+        if row_target is None:
+            continue  # 이 날짜엔 애초에 "미제출"/"확인필요"로 남아있지 않음
+
+        row_matched_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
+        if row_matched_raw is None:
+            continue  # 이 날짜엔 이 이름으로 보낸 메시지가 없음 — 진짜 미제출일 수 있으니 안 건드림
+
+        row_entry["unmatched_members"] = [
+            m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
+        ]
+        row_cleaned_ambiguous = []
+        for amb in row_entry.get("ambiguous") or []:
+            kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
+            if kept:
+                amb["candidates"] = kept
+                row_cleaned_ambiguous.append(amb)
+        row_entry["ambiguous"] = row_cleaned_ambiguous
+
+        row_matched_ids = {str(x.get("id")) for x in (row_entry.get("matched") or [])}
+        if str(member_id) not in row_matched_ids:
+            row_target["_matched_raw"] = row_matched_raw
+            row_entry.setdefault("matched", []).append(row_target)
+
+        try:
+            db_client.update_review_team_entry(row["id"], team, row_entry)
+        except Exception:
+            continue  # 한 날짜 저장에 실패해도 나머지 날짜는 계속 시도
+
+        fixed_dates.append(row["check_date"])
+
+    return fixed_dates
+
+
 @app.route("/hamummal-review/<review_id>/confirm-match", methods=["POST"])
 def hamummal_review_confirm_match(review_id):
     member = _current_member_or_none()
@@ -513,7 +550,9 @@ def hamummal_review_confirm_match(review_id):
             except Exception:
                 pass  # confirmed_matches 저장은 이미 끝났으니 여기서 실패해도 치명적이진 않음
 
-    return jsonify(ok=True)
+    fixed_dates = _retroactively_apply_other_dates(review_id, team, member_id, raw)
+
+    return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
 
 
 @app.route("/hamummal-review/<review_id>/unconfirm-match", methods=["POST"])
@@ -605,8 +644,17 @@ def hamummal_review_fix_name(review_id):
     # 그 상태를 유지하면서 표시용 원문 이름만 고쳐준다.
     matched_raw = hamummal_matcher.find_chat_sender_match(display_name, data.get("chat_senders") or [])
     if found_in == "matched":
-        target["_matched_raw"] = matched_raw or display_name
-        current_matched = True
+        current_matched = matched_raw is not None
+        if current_matched:
+            target["_matched_raw"] = matched_raw
+        else:
+            # 고친 이름으로는 이 날짜에 보낸 메시지를 찾지 못했다 — 지금까지의
+            # 매칭이 잘못됐던 것이므로 제출자 목록에서 빼서 미제출로 내려보낸다.
+            target.pop("_matched_raw", None)
+            entry["matched"] = [
+                m for m in entry.get("matched") or [] if str(m.get("id")) != str(member_id)
+            ]
+            entry.setdefault("unmatched_members", []).append(target)
         try:
             db_client.update_review_team_entry(review_id, team, entry)
         except Exception as e:
@@ -632,66 +680,12 @@ def hamummal_review_fix_name(review_id):
                 return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
 
     # 한 번의 업로드로 여러 날짜가 한꺼번에 분석되는 경우가 많아서(업로드 1건 =
-    # 검토 row 여러 개), 이 조원이 "이 조"의 다른 날짜에서도 아직 미제출로
+    # 검토 row 여러 개), 이 조원이 "이 조"의 다른 날짜에서도 아직 미제출/확인필요로
     # 남아 있는데 그 날짜 대화에도 이 이름으로 보낸 메시지가 있으면 같이
     # 고쳐준다 — 다음 업로드를 기다리지 않고 이미 업로드한 파일 기준으로 바로
     # 반영되도록. (정말 그 날짜에 메시지가 없으면 그대로 미제출로 남는다.)
-    try:
-        other_rows = db_client.list_team_reviews(team)
-    except Exception as e:
-        return jsonify(ok=False, error=f"다른 날짜를 확인하지 못했습니다: {e}"), 500
-
     fixed_dates = [data["check_date"]] if (found_in in ("unmatched", "ambiguous") and current_matched) else []
-    for row in other_rows:
-        if str(row["id"]) == str(review_id):
-            continue  # 지금 보고 있는 날짜는 위에서 이미 처리함
-
-        if (row.get("applied_teams") or {}).get(team):
-            continue  # 이미 반영된 날짜는 건드리지 않음
-
-        row_entry = (row.get("review") or {}).get(team)
-        if not row_entry:
-            continue
-
-        row_target = None
-        for m in row_entry.get("unmatched_members") or []:
-            if str(m.get("id")) == str(member_id):
-                row_target = m
-                break
-        if row_target is None:
-            for amb in row_entry.get("ambiguous") or []:
-                for c in amb.get("candidates") or []:
-                    if str(c.get("id")) == str(member_id):
-                        row_target = c
-                        break
-                if row_target is not None:
-                    break
-        if row_target is None:
-            continue  # 이 날짜엔 애초에 "미제출"/"확인필요"로 남아있지 않음 (건드릴 필요 없음)
-
-        row_matched_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
-        if row_matched_raw is None:
-            continue  # 이 날짜엔 이 이름으로 보낸 메시지가 없음 — 진짜 미제출일 수 있으니 안 건드림
-
-        row_entry["unmatched_members"] = [
-            m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
-        ]
-        row_cleaned_ambiguous = []
-        for amb in row_entry.get("ambiguous") or []:
-            kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
-            if kept:
-                amb["candidates"] = kept
-                row_cleaned_ambiguous.append(amb)
-        row_entry["ambiguous"] = row_cleaned_ambiguous
-        row_target["_matched_raw"] = row_matched_raw
-        row_entry.setdefault("matched", []).append(row_target)
-
-        try:
-            db_client.update_review_team_entry(row["id"], team, row_entry)
-        except Exception as e:
-            return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
-
-        fixed_dates.append(row["check_date"])
+    fixed_dates.extend(_retroactively_apply_other_dates(review_id, team, member_id, display_name))
 
     return jsonify(
         ok=True,

@@ -85,7 +85,11 @@
        align-items:center;justify-content:center;padding:20px;z-index:100}
   .modal-overlay[hidden]{display:none}
   .modal-box{background:#fff;border-radius:14px;padding:20px;max-width:420px;width:100%;
-       max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+       max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2);position:relative}
+  .modal-close-x{position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;
+       background:none;color:#999;font-size:16px;line-height:1;cursor:pointer;border-radius:50%;
+       display:flex;align-items:center;justify-content:center;padding:0;margin:0}
+  .modal-close-x:hover{background:#f2f2f2;color:#333}
   .modal-title{font-size:16px;font-weight:bold;margin:0 0 8px;color:#222}
   .modal-desc{font-size:13px;color:#666;line-height:1.5;margin:0 0 14px}
   .confirm-list{font-size:13px;color:#333;margin-bottom:16px}
@@ -98,13 +102,15 @@
   .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;cursor:pointer;width:auto;margin:0}
   .modal-btn-cancel{background:#eee;color:#333}
   .modal-btn-save{background:#3C1E1E;color:#fff}
+  #info-modal-desc{white-space:pre-line}
 </style>
 </head>
 <body>
   <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>하멈말 결과확인{% if is_today %} <span class="today-badge">오늘</span>{% endif %}</h1>
   <p class="meta">{{ check_date_label }} (진행 시간 {{ window_desc_label }})<br>
-    {% if is_today %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.{% else %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.{% endif %}</p>
+    {% if is_today %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.{% else %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.{% endif %}<br>
+    회색 글씨는 카카오톡 전체 소통방에서 사용 중인 이름이에요.</p>
 
   {% if submitter_count == 0 %}
     <p class="warn">⚠️ 업로드한 파일에서 이 날짜·시간대({{ check_date }} {{ window_desc }})에 해당하는 메시지를 하나도 찾지 못했어요.
@@ -205,6 +211,7 @@
 
   <div class="modal-overlay" id="confirm-apply-modal" hidden>
     <div class="modal-box">
+      <button type="button" class="modal-close-x" id="confirm-apply-close" aria-label="닫기">✕</button>
       <p class="modal-title">반영 확인</p>
       <p class="modal-desc">아래 인원을 소리튠 조장페이지(boot.soritune.com)에 하멈말 제출완료로 반영합니다.
         실제 점수에 반영됩니다. 명단을 한 번 더 확인해주세요.</p>
@@ -218,6 +225,7 @@
 
   <div class="modal-overlay" id="fixname-modal" hidden>
     <div class="modal-box">
+      <button type="button" class="modal-close-x" id="fixname-close" aria-label="닫기">✕</button>
       <p class="modal-title">이름 고치기</p>
       <p class="modal-desc">카카오톡 소통방에서 쓰는 이름(또는 닉네임)이 소리튠에 등록된 이름과 다를 경우
         자동으로 매칭되지 않아요.<br>아래 목록은 제출 메시지를 보낸 사람들의 목록이에요.<br>목록에 이름이
@@ -232,11 +240,23 @@
 
   <div class="modal-overlay" id="exclude-modal" hidden>
     <div class="modal-box">
+      <button type="button" class="modal-close-x" id="exclude-close" aria-label="닫기">✕</button>
       <p class="modal-title">미제출로 변경</p>
       <p class="modal-desc" id="exclude-modal-desc"></p>
       <div class="modal-actions">
         <button type="button" class="modal-btn modal-btn-cancel" id="exclude-cancel">취소</button>
         <button type="button" class="modal-btn modal-btn-save" id="exclude-ok">네, 미제출로 바꿀게요</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="info-modal" hidden>
+    <div class="modal-box">
+      <button type="button" class="modal-close-x" id="info-modal-close" aria-label="닫기">✕</button>
+      <p class="modal-title" id="info-modal-title">알림</p>
+      <p class="modal-desc" id="info-modal-desc"></p>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-save" id="info-modal-ok">확인</button>
       </div>
     </div>
   </div>
@@ -271,6 +291,24 @@
         div.textContent = s == null ? '' : s;
         return div.innerHTML;
       }
+
+      // ---------- 알림 팝업 (window.alert() 대체) ----------
+      var infoModal = document.getElementById('info-modal');
+      var infoModalDesc = document.getElementById('info-modal-desc');
+      var infoModalOk = document.getElementById('info-modal-ok');
+
+      function showInfoModal(message) {
+        infoModalDesc.textContent = message == null ? '' : message;
+        infoModal.hidden = false;
+      }
+      function closeInfoModal() {
+        infoModal.hidden = true;
+      }
+      infoModalOk.addEventListener('click', closeInfoModal);
+      document.getElementById('info-modal-close').addEventListener('click', closeInfoModal);
+      infoModal.addEventListener('click', function (e) {
+        if (e.target === infoModal) closeInfoModal();
+      });
 
       function bumpCount(teamEl, selector, delta) {
         var el = teamEl.querySelector(selector);
@@ -324,6 +362,7 @@
         if (action) action();
       });
       excludeCancelBtn.addEventListener('click', closeExcludeModal);
+      document.getElementById('exclude-close').addEventListener('click', closeExcludeModal);
       excludeModal.addEventListener('click', function (e) {
         if (e.target === excludeModal) closeExcludeModal();
       });
@@ -626,17 +665,36 @@
 
       fixnameSearch.addEventListener('input', renderFixnameList);
       fixnameCancel.addEventListener('click', closeFixnameModal);
+      document.getElementById('fixname-close').addEventListener('click', closeFixnameModal);
       fixnameModal.addEventListener('click', function (e) {
         if (e.target === fixnameModal) closeFixnameModal();
       });
 
-      function announceFixedDates(display, newName, fixedDates) {
-        if (fixedDates.length > 1) {
-          alert(
-            display + ' → ' + newName + '\n\n' +
-            '이미 올라온 파일에 있던 다른 날짜(' + fixedDates.length + '개)의 미제출도 ' +
-            '같이 "' + newName + '"으로 고쳐서 제출 완료로 바꿨어요.\n(' + fixedDates.join(', ') + ')'
-          );
+      // fixedDates: 서버가 돌려준 "같이 고쳐진 날짜들". includesToday가 true면
+      // 배열 맨 앞이 오늘 날짜라서 그걸 빼고 "다른 날짜"만 센다.
+      function announceFixedDates(display, newName, fixedDates, includesToday) {
+        var others = includesToday ? (fixedDates || []).slice(1) : (fixedDates || []).slice();
+        if (others.length === 0) return;
+        showInfoModal(
+          display + ' → ' + newName + '\n\n' +
+          '이미 올라온 파일에 있던 다른 날짜(' + others.length + '개)의 미제출도 ' +
+          '같이 "' + newName + '"으로 고쳐서 제출 완료로 바꿨어요.\n(' + others.join(', ') + ')'
+        );
+      }
+
+      // 확인필요 카드에서 후보 한 줄을 뗀다 — 그 줄이 그 카드의 마지막
+      // 후보였으면 카드(그리고 다 떨어지면 섹션까지)도 같이 치운다. 확인필요
+      // 후보가 아닌 트리거(이름 고치기 등)에서는 ambCandidateRow/ambCard가
+      // 애초에 없어서 아무 일도 하지 않는다.
+      function removeAmbCandidateRow(target) {
+        if (target.ambCandidateRow) target.ambCandidateRow.remove();
+        if (target.ambCard && !target.ambCard.querySelector('.amb-candidate-row')) {
+          target.ambCard.remove();
+          var ambLeft = bumpCount(target.teamEl, '.amb-count', -1);
+          if (ambLeft === 0) {
+            var ambSection = target.teamEl.querySelector('.amb-section');
+            if (ambSection) ambSection.remove();
+          }
         }
       }
 
@@ -658,7 +716,7 @@
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!data.ok) {
-              alert(data.error || '저장하지 못했습니다.');
+              showInfoModal(data.error || '저장하지 못했습니다.');
               return;
             }
 
@@ -669,25 +727,40 @@
             var display = target.display || target.nickname + ' (' + target.realName + ')';
 
             if (target.mode === 'matched') {
-              // 이미 제출자였던 사람 — 표시용 카카오 원문 텍스트만 바꿔치기한다.
-              var rawSpan = teamEl.querySelector(
-                '.matched-list .row.ok[data-member-id="' + memberId + '"] .matched-raw'
-              );
-              if (rawSpan) rawSpan.textContent = '· ' + (data.member && data.member._matched_raw ? data.member._matched_raw : newName);
-              announceFixedDates(display, newName, data.fixed_dates || []);
+              // 이미 제출자였던 사람의 카카오 이름을 고친 경우 — 고친 이름으로
+              // 이 날짜에 실제로 보낸 메시지가 있는지 다시 확인한다.
+              if (data.matched) {
+                var rawSpan = teamEl.querySelector(
+                  '.matched-list .row.ok[data-member-id="' + memberId + '"] .matched-raw'
+                );
+                if (rawSpan) rawSpan.textContent = '· ' + (data.member && data.member._matched_raw ? data.member._matched_raw : newName);
+                announceFixedDates(display, newName, data.fixed_dates || [], false);
+              } else {
+                // 고친 이름으로는 이 날짜에 보낸 메시지를 찾지 못함 — 지금까지의
+                // 매칭이 잘못됐던 것이므로 미제출로 내려간다.
+                var matchedRow = teamEl.querySelector('.matched-list .row.ok[data-member-id="' + memberId + '"]');
+                if (matchedRow) matchedRow.remove();
+                bumpCount(teamEl, '.matched-count', -1);
+                addUnmatchedRow(teamEl, team, memberId, target.nickname, target.realName, display);
+                var demoteMsg =
+                  display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
+                  '다만 이 날짜 대화에서는 그 이름으로 보낸 메시지를 찾지 못해서, 이 날짜는 미제출로 바뀌었어요.';
+                if (data.fixed_dates && data.fixed_dates.length > 0) {
+                  demoteMsg += '\n\n다른 날짜(' + data.fixed_dates.length + '개)는 그 이름으로 보낸 메시지를 찾아서 ' +
+                    '제출 완료로 바꿨어요.\n(' + data.fixed_dates.join(', ') + ')';
+                }
+                showInfoModal(demoteMsg);
+              }
               return;
             }
 
+            // 미제출 또는 확인필요 후보였던 사람 — 둘 다 원래 미제출 목록에도
+            // 같이 들어있으므로, 확인필요 카드에 있었으면 그 후보 줄도 치운다.
+            removeAmbCandidateRow(target);
+
             if (!data.matched) {
               // 이름은 등록됐지만, 이 날짜 대화에서는 그 이름으로 보낸 메시지를
-              // 찾지 못해서 아직 확인/제출 상태가 바뀌지 않음 — 화면에 그 사실을 보여준다.
-              if (target.mode === 'ambiguous') {
-                alert(
-                  display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
-                  '다만 이 날짜 대화에서는 그 이름으로 보낸 메시지를 찾지 못해서, 아직 확인이 필요한 상태로 남아있어요.'
-                );
-                return;
-              }
+              // 찾지 못해서 아직 미제출 상태 — 미제출 목록의 표시만 갱신한다.
               var row = teamEl.querySelector('.unmatched-list .row.miss[data-member-id="' + memberId + '"]');
               if (row) {
                 var tagEl = row.querySelector('.unmatched-tag');
@@ -699,37 +772,20 @@
                   if (hintEl) hintEl.textContent = '· ' + newName;
                 }
               }
-              alert(
+              showInfoModal(
                 display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
                 '다만 이 날짜 대화에서는 그 이름으로 보낸 제출 메시지를 찾지 못해서, 이 날짜는 아직 미제출로 남아있어요.'
               );
               return;
             }
 
-            if (target.mode === 'ambiguous') {
-              // 확인필요 후보였던 사람 — 그 후보 줄만 지우고, 카드에 남은
-              // 후보가 없으면 카드 전체(그리고 다 떨어지면 섹션까지)를 치운다.
-              if (target.ambCandidateRow) target.ambCandidateRow.remove();
-              if (target.ambCard && !target.ambCard.querySelector('.amb-candidate-row')) {
-                target.ambCard.remove();
-                var ambLeft = bumpCount(teamEl, '.amb-count', -1);
-                if (ambLeft === 0) {
-                  var ambSection = teamEl.querySelector('.amb-section');
-                  if (ambSection) ambSection.remove();
-                }
-              }
-              addMatchedRow(teamEl, team, memberId, display, data.member && data.member._matched_raw ? data.member._matched_raw : newName);
-              announceFixedDates(display, newName, data.fixed_dates || []);
-              return;
-            }
-
             // 미제출 → 제출자로 이동
             removeUnmatchedRow(teamEl, memberId);
             addMatchedRow(teamEl, team, memberId, display, data.member && data.member._matched_raw ? data.member._matched_raw : newName);
-            announceFixedDates(display, newName, data.fixed_dates || []);
+            announceFixedDates(display, newName, data.fixed_dates || [], true);
           })
           .catch(function () {
-            alert('네트워크 오류로 저장하지 못했습니다.');
+            showInfoModal('네트워크 오류로 저장하지 못했습니다.');
           })
           .finally(function () {
             fixnameList.style.pointerEvents = '';
@@ -779,7 +835,7 @@
             .then(function (res) { return res.json(); })
             .then(function (data) {
               if (!data.ok) {
-                alert(data.error || '시트에 저장하지 못했습니다.');
+                showInfoModal(data.error || '시트에 저장하지 못했습니다.');
                 cb.checked = false;
                 return;
               }
@@ -791,9 +847,10 @@
               removeUnmatchedRow(teamEl, memberId);
               addMatchedRow(teamEl, team, memberId, display, raw);
               removeAmbBlockIfDone(teamEl, ambBlock);
+              announceFixedDates(display, raw, data.fixed_dates || [], false);
             })
             .catch(function () {
-              alert('네트워크 오류로 시트에 저장하지 못했습니다.');
+              showInfoModal('네트워크 오류로 시트에 저장하지 못했습니다.');
               cb.checked = false;
             })
             .finally(function () {
@@ -842,6 +899,9 @@
         form.submit();
       });
       cancelBtn.addEventListener('click', function () {
+        modal.hidden = true;
+      });
+      document.getElementById('confirm-apply-close').addEventListener('click', function () {
         modal.hidden = true;
       });
       modal.addEventListener('click', function (e) {

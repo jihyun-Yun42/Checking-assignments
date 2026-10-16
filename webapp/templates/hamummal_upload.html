@@ -95,15 +95,8 @@
   {% endif %}
 
   <h2 class="section-h2">하멈말 진행 시간 설정</h2>
-  <p class="hint">하멈말 시작일을 정하면 그날부터 실제로 분석된 마지막 날짜까지 날짜별로 진행 시간을
-     따로 설정할 수 있어요. 업로드하면 날짜마다 저장된 시간(없으면 기본값 13:30~14:01)으로
-     자동 분석되고, 이 표에서 나중에 다시 와서 수정할 수 있어요.</p>
-
-  <form method="post" action="{{ url_for('hamummal_upload_set_start_date') }}">
-    <label>하멈말 시작일</label>
-    <input type="date" name="start_date" value="{{ hamummal_start_date or '' }}" required>
-    <button type="submit">{{ '시작일 변경' if hamummal_start_date else '시작일 설정' }}</button>
-  </form>
+  <p class="hint">실제로 분석된 날짜만 아래에 나와요. 업로드하면 날짜마다 저장된 시간(없으면
+     기본값 13:30~14:01)으로 자동 분석되고, 이 표에서 나중에 다시 와서 날짜별로 수정할 수 있어요.</p>
 
   {% if date_window_dates %}
     <details class="window-details">
