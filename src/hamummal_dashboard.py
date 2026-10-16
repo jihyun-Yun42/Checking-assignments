@@ -54,6 +54,7 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
             board.get("members") or [],
             confirmed_rows=confirmed_rows,
             display_name_overrides=display_name_overrides,
+            all_chat_senders=sorted(all_submitters),
         )
         match["error"] = None
         match["_phone"] = login_phone

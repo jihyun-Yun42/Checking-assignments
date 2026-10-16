@@ -178,12 +178,13 @@
       <div class="unmatched-list">
         {% for m in data.unmatched_members %}
           {% set override_name = display_name_overrides.get(m.id | string) %}
+          {% set known_hint = override_name or m.get('_known_raw') %}
           <div class="row miss" data-member-id="{{ m.id }}">
             {% if not applied %}
               <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
                 data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
                 title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
-                {% if override_name %}<span class="override-hint">· {{ override_name }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
+                {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
               <span class="row-actions">
                 <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
                   data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
@@ -416,7 +417,7 @@
       // 제출자 → "실제로 제출 안 함"으로 되돌릴 때, 미제출 목록에 행을 새로
       // 만들어 붙인다. 이름 고치기 / 사실 제출했어요를 다시 쓸 수 있게 그대로
       // wiring 해준다.
-      function addUnmatchedRow(teamEl, team, memberId, nickname, realName, display) {
+      function addUnmatchedRow(teamEl, team, memberId, nickname, realName, display, hintText) {
         var unmatchedList = teamEl.querySelector('.unmatched-list');
         var row = document.createElement('div');
         row.className = 'row miss';
@@ -435,9 +436,14 @@
         trigger.setAttribute('data-display', display);
         trigger.appendChild(document.createTextNode(display));
         var tag = document.createElement('span');
-        tag.className = 'unmatched-tag';
-        tag.textContent = '(매칭안됨)';
         trigger.appendChild(document.createTextNode(' '));
+        if (hintText) {
+          tag.className = 'override-hint';
+          tag.textContent = '· ' + hintText;
+        } else {
+          tag.className = 'unmatched-tag';
+          tag.textContent = '(매칭안됨)';
+        }
         trigger.appendChild(tag);
         wireOneFixnameTrigger(trigger);
         row.appendChild(trigger);
@@ -741,7 +747,7 @@
                 var matchedRow = teamEl.querySelector('.matched-list .row.ok[data-member-id="' + memberId + '"]');
                 if (matchedRow) matchedRow.remove();
                 bumpCount(teamEl, '.matched-count', -1);
-                addUnmatchedRow(teamEl, team, memberId, target.nickname, target.realName, display);
+                addUnmatchedRow(teamEl, team, memberId, target.nickname, target.realName, display, newName);
                 var demoteMsg =
                   display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
                   '다만 이 날짜 대화에서는 그 이름으로 보낸 메시지를 찾지 못해서, 이 날짜는 미제출로 바뀌었어요.';

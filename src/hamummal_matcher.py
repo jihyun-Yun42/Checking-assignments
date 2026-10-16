@@ -46,7 +46,8 @@ def _confirmed_key_map(confirmed_rows) -> dict:
 
 
 def match_submitters(
-    kakao_raw_names, dashboard_members: list, confirmed_rows=None, display_name_overrides=None
+    kakao_raw_names, dashboard_members: list, confirmed_rows=None, display_name_overrides=None,
+    all_chat_senders=None,
 ) -> dict:
     parsed = []
     for raw in kakao_raw_names:
@@ -108,7 +109,33 @@ def match_submitters(
             ambiguous.append({"raw": item["raw"], "candidates": [c[2] for c in top]})
 
     matched = [meta["member"] for mid, meta in member_meta.items() if mid in matched_ids]
-    unmatched_members = [meta["member"] for mid, meta in member_meta.items() if mid not in matched_ids]
+
+    # "매칭(그 사람이 누구인지 식별)"과 "오늘 제출했는지"는 별개다. 오늘
+    # 메시지가 없어서 미제출로 남더라도, 전체 소통방(all_chat_senders, 날짜
+    # 상관없이 업로드 파일 전체)에서 한 번이라도 이름/닉네임이 겹치는 원문을
+    # 찾은 적 있으면 "식별은 된 사람"이라는 힌트(_known_raw)를 붙여준다 —
+    # 화면에서 "(매칭안됨)" 대신 그 원문을 보여주기 위함일 뿐, 제출 여부
+    # 판정에는 아무 영향 없다(그건 여전히 위 kakao_raw_names만 쓴다).
+    all_tokens_cache = []
+    for raw in (all_chat_senders or []):
+        body, _ = _strip_round(raw)
+        raw_tokens = _normalize_tokens(body)
+        if raw_tokens:
+            all_tokens_cache.append((raw, raw_tokens))
+
+    unmatched_members = []
+    for mid, meta in member_meta.items():
+        if mid in matched_ids:
+            continue
+        member = meta["member"]
+        if all_tokens_cache:
+            member_tokens = meta["nick_tokens"] | meta["name_tokens"]
+            if member_tokens:
+                for raw, raw_tokens in all_tokens_cache:
+                    if raw_tokens & member_tokens:
+                        member["_known_raw"] = raw
+                        break
+        unmatched_members.append(member)
 
     return {"matched": matched, "unmatched_members": unmatched_members, "ambiguous": ambiguous}
 
