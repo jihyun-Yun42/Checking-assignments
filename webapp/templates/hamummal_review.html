@@ -20,9 +20,15 @@
   .row{font-size:14px;padding:3px 0}
   .row.ok, .row.miss{color:#0a7a2f;display:flex;align-items:center;justify-content:space-between;gap:8px}
   .row.miss{color:#888}
-  .amb{color:#b8860b}
   .err{color:#c0392b;font-weight:bold}
-  label.cand{display:block;font-size:14px;padding:4px 0}
+
+  .amb-card{border:1px solid #f0d9a0;background:#fffaf0;border-radius:10px;
+       padding:10px 12px;margin-bottom:10px}
+  .amb-raw-label{font-size:13px;color:#8a6100;margin-bottom:6px;line-height:1.4}
+  .amb-candidate-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:6px 0;border-top:1px solid #f5e6c4;flex-wrap:wrap}
+  .amb-candidate-row:first-of-type{border-top:none}
+  label.cand{display:flex;align-items:center;gap:6px;font-size:14px;padding:0;margin:0;flex:1 1 auto}
   .section-title{font-size:12px;color:#999;margin-top:10px;text-transform:uppercase}
   .toolbar{position:sticky;bottom:0;background:#fff;padding:14px 0;border-top:1px solid #eee;margin-top:10px}
   .toolbar label{font-size:14px}
@@ -53,27 +59,27 @@
        text-decoration-color:#ccc}
   .fixname-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
 
-  #fixname-search, #picker-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
+  #fixname-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
        border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
-  .fixname-list, .picker-list{height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;
+  .fixname-list{height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;
        margin-bottom:4px;box-sizing:border-box}
-  .fixname-item, .picker-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
+  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
        display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .fixname-item:last-child, .picker-item:last-child{border-bottom:none}
-  .fixname-item:hover, .picker-item:hover{background:#f8f5ee}
+  .fixname-item:last-child{border-bottom:none}
+  .fixname-item:hover{background:#f8f5ee}
   .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
   .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
-  .fixname-item.fixname-item-empty, .picker-item.picker-item-empty{color:#999;cursor:default;
+  .fixname-item.fixname-item-empty{color:#999;cursor:default;
        justify-content:center;text-align:center;line-height:1.5}
-  .fixname-item.fixname-item-empty:hover, .picker-item.picker-item-empty:hover{background:none}
+  .fixname-item.fixname-item-empty:hover{background:none}
 
   .matched-raw{color:#999;font-size:12px;cursor:pointer;text-decoration:underline dotted;
        text-underline-offset:2px;margin-left:4px}
   .matched-raw:hover{color:#8a5a00}
   .override-hint{color:#999;font-size:12px;margin-left:4px}
 
-  .amb-manual-trigger{font-size:13px;color:#8a5a00;cursor:pointer;text-decoration:underline;
-       margin:4px 0 0;display:inline-block}
+  .amb-manual-trigger{font-size:12px;color:#8a5a00;cursor:pointer;text-decoration:underline;
+       flex-shrink:0;white-space:nowrap}
 
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
        align-items:center;justify-content:center;padding:20px;z-index:100}
@@ -125,7 +131,8 @@
             <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} {% if not applied %}<span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% else %}<span class="matched-raw">· {{ m.get('_matched_raw') }}</span>{% endif %}{% endif %}</span>
             {% if not applied %}
               <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                title="우리 조원 아님" aria-label="우리 조원 아님">✕</button>
+                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
+                title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
             {% endif %}
           </div>
         {% endfor %}
@@ -134,25 +141,28 @@
 
       {% if data.ambiguous %}
         <div class="amb-section">
-          <div class="section-title">확인 필요 (<span class="amb-count">{{ data.ambiguous|length }}</span>건) — 맞으면 체크해주세요</div>
+          <div class="section-title">확인 필요 (<span class="amb-count">{{ data.ambiguous|length }}</span>건)</div>
           {% for amb in data.ambiguous %}
-            <div class="row amb">
-              "{{ amb.raw }}" 메시지 보낸 사람 추정:
+            <div class="amb-card">
+              <div class="amb-raw-label">카톡에서 "<strong>{{ amb.raw }}</strong>" 이름으로 보낸 메시지가 있어요</div>
               {% for c in amb.candidates %}
-                <label class="cand">
-                  <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"{{ ' disabled' if applied else '' }}
-                    class="amb-checkbox"
-                    data-team="{{ team }}" data-member-id="{{ c.id }}"
-                    data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
-                    data-display="{{ c | hname }}"
-                    data-raw="{{ amb.raw }}">
-                  {{ c | hname }}
-                </label>
+                <div class="amb-candidate-row">
+                  <label class="cand">
+                    <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"{{ ' disabled' if applied else '' }}
+                      class="amb-checkbox"
+                      data-team="{{ team }}" data-member-id="{{ c.id }}"
+                      data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
+                      data-display="{{ c | hname }}"
+                      data-raw="{{ amb.raw }}">
+                    <strong>{{ c | hname }}</strong> 님이 보낸 메시지가 맞아요
+                  </label>
+                  {% if not applied %}
+                    <span class="amb-manual-trigger fixname-trigger" role="button" tabindex="0"
+                      data-mode="ambiguous" data-team="{{ team }}" data-member-id="{{ c.id }}"
+                      data-nickname="" data-real-name="" data-display="{{ c | hname }}">선택지에 없어요 · 직접 입력할게요</span>
+                  {% endif %}
+                </div>
               {% endfor %}
-              {% if not applied %}
-                <span class="amb-manual-trigger" role="button" tabindex="0"
-                  data-team="{{ team }}" data-raw="{{ amb.raw }}">선택지에 없어요 · 직접 입력할게요</span>
-              {% endif %}
             </div>
           {% endfor %}
         </div>
@@ -188,7 +198,7 @@
       {% if applied %}
         <p class="test-note">이미 반영된 검토라 버튼이 비활성화되어 있어요.</p>
       {% elif not apply_enabled %}
-        <p class="test-note">지금은 반영 기능이 꺼져 있어요. (관리자가 하멈말 업로드 페이지에서 켜야 사용할 수 있어요)</p>
+        <p class="test-note">지금은 반영 기능이 꺼져 있어요.</p>
       {% endif %}
     </div>
   </form>
@@ -209,10 +219,9 @@
   <div class="modal-overlay" id="fixname-modal" hidden>
     <div class="modal-box">
       <p class="modal-title">이름 고치기</p>
-      <p class="modal-desc">카카오톡 소통방에서 쓰는 이름(또는 닉네임)이 소리튠에 등록된 이름과 같아야 자동으로
-        매칭돼요. 아래 목록은 이 날짜 대화에서 실제로 제출 메시지를 보낸 사람들이에요 — 본인 이름을 찾아서
-        누르면 바로 제출 완료로 바뀌어요. 이름을 맞게 입력해도 소통방에서 이 시간대에 한 번도 메시지를
-        보내지 않았으면 계속 매칭되지 않을 수 있어요 — 목록에 이름이 안 보이면 그 이유일 수 있어요.</p>
+      <p class="modal-desc">카카오톡 소통방에서 쓰는 이름(또는 닉네임)이 소리튠에 등록된 이름과 다를 경우
+        자동으로 매칭되지 않아요.<br>아래 목록은 제출 메시지를 보낸 사람들의 목록이에요.<br>목록에 이름이
+        보이지 않으면 직접 입력해서 저장해 주세요.</p>
       <input type="text" id="fixname-search" placeholder="이름 검색" autocomplete="off">
       <div class="fixname-list" id="fixname-list"></div>
       <div class="modal-actions">
@@ -221,15 +230,13 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="picker-modal" hidden>
+  <div class="modal-overlay" id="exclude-modal" hidden>
     <div class="modal-box">
-      <p class="modal-title">조원 직접 선택</p>
-      <p class="modal-desc">이 메시지를 실제로 보낸 사람이 선택지에 없을 때, 우리 조 미제출 명단에서
-        직접 찾아서 연결할 수 있어요.</p>
-      <input type="text" id="picker-search" placeholder="이름 검색" autocomplete="off">
-      <div class="picker-list" id="picker-list"></div>
+      <p class="modal-title">미제출로 변경</p>
+      <p class="modal-desc" id="exclude-modal-desc"></p>
       <div class="modal-actions">
-        <button type="button" class="modal-btn modal-btn-cancel" id="picker-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-cancel" id="exclude-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-save" id="exclude-ok">네, 미제출로 바꿀게요</button>
       </div>
     </div>
   </div>
@@ -291,23 +298,53 @@
         return input;
       }
 
-      function confirmExclude(name) {
-        var label = name ? name + '\n\n' : '';
-        return window.confirm(label + '우리 조원이 아닌가요?\n체크를 해제하고 명단에서 제외합니다.');
+      // ---------- 제출 안 함으로 변경(미제출로 이동) 확인 팝업 ----------
+      // confirm() 팝업은 쓰지 않고 우리가 만든 모달로 대체한다. "우리 조원
+      // 아님"이 아니라 "실제로 제출하지 않았다"는 뜻으로 바꾸고, 지우기만
+      // 하는 게 아니라 미제출 목록에 다시 보이도록 옮긴다.
+      var excludeModal = document.getElementById('exclude-modal');
+      var excludeModalDesc = document.getElementById('exclude-modal-desc');
+      var excludeOkBtn = document.getElementById('exclude-ok');
+      var excludeCancelBtn = document.getElementById('exclude-cancel');
+      var excludePendingAction = null;
+
+      function openExcludeModal(display, onConfirm) {
+        excludeModalDesc.textContent =
+          (display ? display + ' 님, ' : '') + '실제로는 제출하지 않았나요?\n확인하면 미제출 명단으로 다시 옮겨요.';
+        excludePendingAction = onConfirm;
+        excludeModal.hidden = false;
+      }
+      function closeExcludeModal() {
+        excludeModal.hidden = true;
+        excludePendingAction = null;
+      }
+      excludeOkBtn.addEventListener('click', function () {
+        var action = excludePendingAction;
+        closeExcludeModal();
+        if (action) action();
+      });
+      excludeCancelBtn.addEventListener('click', closeExcludeModal);
+      excludeModal.addEventListener('click', function (e) {
+        if (e.target === excludeModal) closeExcludeModal();
+      });
+
+      // 조원 하나에 대해 전에 심어둔 extra__/exclude__ 히든필드가 있으면
+      // 지운다 (제출함 ↔ 제출 안 함을 왔다갔다 해도 반영 시점에 상태가
+      // 겹치지 않게).
+      function clearMemberHiddenFields(team, memberId) {
+        form.querySelectorAll(
+          'input[name="extra__' + team + '__' + memberId + '"], input[name="exclude__' + team + '__' + memberId + '"]'
+        ).forEach(function (el) { el.remove(); });
       }
 
-      function makeExcludeButton(team, memberId, name, onExclude) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'exclude-btn';
-        btn.textContent = '✕';
-        btn.title = '우리 조원 아님';
-        btn.setAttribute('aria-label', '우리 조원 아님');
-        btn.addEventListener('click', function () {
-          if (!confirmExclude(name)) return;
-          onExclude();
+      function excludeMatchedMember(team, memberId, display, nickname, realName, row, teamEl) {
+        openExcludeModal(display, function () {
+          row.remove();
+          bumpCount(teamEl, '.matched-count', -1);
+          clearMemberHiddenFields(team, memberId);
+          addHiddenExcludeField(team, memberId);
+          addUnmatchedRow(teamEl, team, memberId, nickname, realName, display);
         });
-        return btn;
       }
 
       function wireStaticExcludeButtons() {
@@ -315,14 +352,12 @@
           btn.addEventListener('click', function () {
             var team = btn.getAttribute('data-team');
             var memberId = btn.getAttribute('data-member-id');
+            var nickname = btn.getAttribute('data-nickname') || '';
+            var realName = btn.getAttribute('data-real-name') || '';
+            var display = btn.getAttribute('data-display') || '';
             var row = btn.closest('.row.ok');
             var teamEl = btn.closest('.team');
-            var span = row.querySelector('span');
-            var name = span ? span.textContent.replace('✅', '').trim() : '';
-            if (!confirmExclude(name)) return;
-            row.remove();
-            bumpCount(teamEl, '.matched-count', -1);
-            addHiddenExcludeField(team, memberId);
+            excludeMatchedMember(team, memberId, display, nickname, realName, row, teamEl);
           });
         });
       }
@@ -337,6 +372,59 @@
         bumpCount(teamEl, '.unmatched-count', -1);
         var emptyMissEl = teamEl.querySelector('.unmatched-empty');
         if (emptyMissEl) emptyMissEl.remove();
+      }
+
+      // 제출자 → "실제로 제출 안 함"으로 되돌릴 때, 미제출 목록에 행을 새로
+      // 만들어 붙인다. 이름 고치기 / 사실 제출했어요를 다시 쓸 수 있게 그대로
+      // wiring 해준다.
+      function addUnmatchedRow(teamEl, team, memberId, nickname, realName, display) {
+        var unmatchedList = teamEl.querySelector('.unmatched-list');
+        var row = document.createElement('div');
+        row.className = 'row miss';
+        row.setAttribute('data-member-id', memberId);
+
+        var trigger = document.createElement('span');
+        trigger.className = 'fixname-trigger';
+        trigger.setAttribute('role', 'button');
+        trigger.setAttribute('tabindex', '0');
+        trigger.title = '카카오톡 이름이 달라요 (눌러서 수정)';
+        trigger.setAttribute('data-mode', 'unmatched');
+        trigger.setAttribute('data-team', team);
+        trigger.setAttribute('data-member-id', memberId);
+        trigger.setAttribute('data-nickname', nickname || '');
+        trigger.setAttribute('data-real-name', realName || '');
+        trigger.setAttribute('data-display', display);
+        trigger.appendChild(document.createTextNode(display));
+        var tag = document.createElement('span');
+        tag.className = 'unmatched-tag';
+        tag.textContent = '(매칭안됨)';
+        trigger.appendChild(document.createTextNode(' '));
+        trigger.appendChild(tag);
+        wireOneFixnameTrigger(trigger);
+        row.appendChild(trigger);
+
+        var actions = document.createElement('span');
+        actions.className = 'row-actions';
+        var markBtn = document.createElement('button');
+        markBtn.type = 'button';
+        markBtn.className = 'mark-submitted-btn';
+        markBtn.title = '사실 제출했어요';
+        markBtn.setAttribute('aria-label', '사실 제출했어요');
+        markBtn.textContent = '✓';
+        markBtn.setAttribute('data-team', team);
+        markBtn.setAttribute('data-member-id', memberId);
+        markBtn.setAttribute('data-nickname', nickname || '');
+        markBtn.setAttribute('data-real-name', realName || '');
+        markBtn.setAttribute('data-display', display);
+        markBtn.addEventListener('click', function () { moveUnmatchedToMatched(markBtn); });
+        actions.appendChild(markBtn);
+        row.appendChild(actions);
+
+        unmatchedList.appendChild(row);
+        bumpCount(teamEl, '.unmatched-count', 1);
+        var emptyEl = teamEl.querySelector('.unmatched-empty');
+        if (emptyEl) emptyEl.remove();
+        return row;
       }
 
       // 제출자 목록에 새 행을 만들어 붙인다. rawText가 있으면 그 아래에 작은
@@ -368,11 +456,16 @@
         }
         row.appendChild(span);
 
-        row.appendChild(makeExcludeButton(team, memberId, display, function () {
-          row.remove();
-          bumpCount(teamEl, '.matched-count', -1);
-          addHiddenExcludeField(team, memberId);
-        }));
+        var excludeBtn = document.createElement('button');
+        excludeBtn.type = 'button';
+        excludeBtn.className = 'exclude-btn';
+        excludeBtn.textContent = '✕';
+        excludeBtn.title = '실제로 제출 안 함 (눌러서 미제출로 변경)';
+        excludeBtn.setAttribute('aria-label', '실제로 제출 안 함');
+        excludeBtn.addEventListener('click', function () {
+          excludeMatchedMember(team, memberId, display, '', '', row, teamEl);
+        });
+        row.appendChild(excludeBtn);
 
         matchedList.appendChild(row);
         bumpCount(teamEl, '.matched-count', 1);
@@ -422,11 +515,43 @@
         fixnameTarget = null;
       }
 
+      // 초성(ㅇ, ㅈ 등)만 입력해도, 또는 글자+초성을 섞어 입력해도 찾을 수
+      // 있게 하는 한글 자모 느슨한 검색. "ㅇ" → 초성이 ㅇ인 모든 글자에 매치,
+      // "윤ㅈ" → "윤" 다음에 초성이 ㅈ인 글자가 바로 이어지면 매치.
+      var CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
+      function hangulChosung(ch) {
+        var code = ch.charCodeAt(0) - 0xAC00;
+        if (code < 0 || code > 11171) return null;
+        return CHOSUNG_LIST[Math.floor(code / 588)];
+      }
+
+      function charMatches(queryChar, targetChar) {
+        if (!targetChar) return false;
+        if (queryChar.toLowerCase() === targetChar.toLowerCase()) return true;
+        if (CHOSUNG_LIST.indexOf(queryChar) !== -1) {
+          return hangulChosung(targetChar) === queryChar;
+        }
+        return false;
+      }
+
+      function fuzzyKoreanIncludes(target, query) {
+        if (!query) return true;
+        target = target || '';
+        for (var start = 0; start <= target.length - query.length; start++) {
+          var ok = true;
+          for (var i = 0; i < query.length; i++) {
+            if (!charMatches(query[i], target[start + i])) { ok = false; break; }
+          }
+          if (ok) return true;
+        }
+        return false;
+      }
+
       function renderFixnameList() {
         var q = fixnameSearch.value.trim();
-        var qLower = q.toLowerCase();
         var matches = CHAT_SENDERS.filter(function (name) {
-          return !qLower || name.toLowerCase().indexOf(qLower) !== -1;
+          return fuzzyKoreanIncludes(name, q);
         });
 
         fixnameList.innerHTML = '';
@@ -475,6 +600,8 @@
           realName: trigger.getAttribute('data-real-name'),
           display: trigger.getAttribute('data-display'),
           teamEl: trigger.closest('.team'),
+          ambCandidateRow: trigger.closest('.amb-candidate-row'),
+          ambCard: trigger.closest('.amb-card'),
         };
         fixnameSearch.value = '';
         renderFixnameList();
@@ -553,7 +680,14 @@
 
             if (!data.matched) {
               // 이름은 등록됐지만, 이 날짜 대화에서는 그 이름으로 보낸 메시지를
-              // 찾지 못해서 미제출 상태가 유지됨 — 화면에 그 사실을 보여준다.
+              // 찾지 못해서 아직 확인/제출 상태가 바뀌지 않음 — 화면에 그 사실을 보여준다.
+              if (target.mode === 'ambiguous') {
+                alert(
+                  display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
+                  '다만 이 날짜 대화에서는 그 이름으로 보낸 메시지를 찾지 못해서, 아직 확인이 필요한 상태로 남아있어요.'
+                );
+                return;
+              }
               var row = teamEl.querySelector('.unmatched-list .row.miss[data-member-id="' + memberId + '"]');
               if (row) {
                 var tagEl = row.querySelector('.unmatched-tag');
@@ -572,6 +706,23 @@
               return;
             }
 
+            if (target.mode === 'ambiguous') {
+              // 확인필요 후보였던 사람 — 그 후보 줄만 지우고, 카드에 남은
+              // 후보가 없으면 카드 전체(그리고 다 떨어지면 섹션까지)를 치운다.
+              if (target.ambCandidateRow) target.ambCandidateRow.remove();
+              if (target.ambCard && !target.ambCard.querySelector('.amb-candidate-row')) {
+                target.ambCard.remove();
+                var ambLeft = bumpCount(teamEl, '.amb-count', -1);
+                if (ambLeft === 0) {
+                  var ambSection = teamEl.querySelector('.amb-section');
+                  if (ambSection) ambSection.remove();
+                }
+              }
+              addMatchedRow(teamEl, team, memberId, display, data.member && data.member._matched_raw ? data.member._matched_raw : newName);
+              announceFixedDates(display, newName, data.fixed_dates || []);
+              return;
+            }
+
             // 미제출 → 제출자로 이동
             removeUnmatchedRow(teamEl, memberId);
             addMatchedRow(teamEl, team, memberId, display, data.member && data.member._matched_raw ? data.member._matched_raw : newName);
@@ -586,86 +737,7 @@
           });
       }
 
-      // ---------- 조원 직접 선택 팝업 (확인필요에서 "선택지에 없어요") ----------
-
-      var pickerModal = document.getElementById('picker-modal');
-      var pickerSearch = document.getElementById('picker-search');
-      var pickerList = document.getElementById('picker-list');
-      var pickerCancel = document.getElementById('picker-cancel');
-      var pickerTarget = null; // { team, raw, teamEl, ambBlock }
-
-      function closePickerModal() {
-        pickerModal.hidden = true;
-        pickerTarget = null;
-      }
-
-      function renderPickerList() {
-        if (!pickerTarget) return;
-        var q = pickerSearch.value.trim().toLowerCase();
-        var rows = pickerTarget.teamEl.querySelectorAll('.unmatched-list .row.miss');
-        var items = [];
-        rows.forEach(function (row) {
-          var trigger = row.querySelector('.fixname-trigger');
-          if (!trigger) return;
-          var display = trigger.getAttribute('data-display') || '';
-          if (q && display.toLowerCase().indexOf(q) === -1) return;
-          items.push({
-            memberId: trigger.getAttribute('data-member-id'),
-            nickname: trigger.getAttribute('data-nickname'),
-            realName: trigger.getAttribute('data-real-name'),
-            display: display,
-          });
-        });
-
-        pickerList.innerHTML = '';
-        items.forEach(function (it) {
-          var el = document.createElement('div');
-          el.className = 'picker-item';
-          el.textContent = it.display;
-          el.addEventListener('click', function () { confirmPicker(it); });
-          pickerList.appendChild(el);
-        });
-
-        if (items.length === 0) {
-          var empty = document.createElement('div');
-          empty.className = 'picker-item picker-item-empty';
-          empty.textContent = '검색 결과가 없어요.';
-          pickerList.appendChild(empty);
-        }
-      }
-
-      function openPickerModal(trigger) {
-        pickerTarget = {
-          team: trigger.getAttribute('data-team'),
-          raw: trigger.getAttribute('data-raw'),
-          teamEl: trigger.closest('.team'),
-          ambBlock: trigger.closest('.row.amb'),
-        };
-        pickerSearch.value = '';
-        renderPickerList();
-        pickerModal.hidden = false;
-        pickerSearch.focus();
-      }
-
-      function wireAmbManualTriggers() {
-        document.querySelectorAll('.amb-manual-trigger').forEach(function (trigger) {
-          trigger.addEventListener('click', function () { openPickerModal(trigger); });
-          trigger.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              openPickerModal(trigger);
-            }
-          });
-        });
-      }
-      wireAmbManualTriggers();
-
-      pickerSearch.addEventListener('input', renderPickerList);
-      pickerCancel.addEventListener('click', closePickerModal);
-      pickerModal.addEventListener('click', function (e) {
-        if (e.target === pickerModal) closePickerModal();
-      });
-
+      // ---------- 확인필요: "맞으면 체크" 시 카드를 치우는 공통 함수 ----------
       function removeAmbBlockIfDone(teamEl, ambBlock) {
         if (ambBlock) ambBlock.remove();
         var ambLeft = bumpCount(teamEl, '.amb-count', -1);
@@ -673,41 +745,6 @@
           var ambSection = teamEl.querySelector('.amb-section');
           if (ambSection) ambSection.remove();
         }
-      }
-
-      function confirmPicker(it) {
-        if (!pickerTarget) return;
-        var target = pickerTarget;
-
-        pickerList.style.pointerEvents = 'none';
-        pickerList.style.opacity = '.5';
-
-        fetch(CONFIRM_MATCH_URL, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            team: target.team, member_id: it.memberId, nickname: it.nickname, real_name: it.realName, raw: target.raw,
-          }),
-        })
-          .then(function (res) { return res.json(); })
-          .then(function (data) {
-            if (!data.ok) {
-              alert(data.error || '저장하지 못했습니다.');
-              return;
-            }
-            closePickerModal();
-            removeUnmatchedRow(target.teamEl, it.memberId);
-            addMatchedRow(target.teamEl, target.team, it.memberId, it.display, target.raw);
-            removeAmbBlockIfDone(target.teamEl, target.ambBlock);
-          })
-          .catch(function () {
-            alert('네트워크 오류로 저장하지 못했습니다.');
-          })
-          .finally(function () {
-            pickerList.style.pointerEvents = '';
-            pickerList.style.opacity = '';
-          });
       }
 
       // ---------- 확인필요 체크박스 ----------
@@ -723,7 +760,7 @@
           var display = cb.getAttribute('data-display') || (nickname + ' (' + realName + ')');
           var raw = cb.getAttribute('data-raw');
           var teamEl = cb.closest('.team');
-          var ambBlock = cb.closest('.row.amb');
+          var ambBlock = cb.closest('.amb-card');
 
           // 시트에 저장되기 전에 "반영하기"를 눌러버리면 아직 matched-list로
           // 옮겨지지 않은 사람이 반영확인 팝업 명단에서 누락될 수 있으므로,
@@ -777,7 +814,8 @@
           teamEl.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
             var span = row.querySelector('span');
             var text = span ? span.textContent.replace('✅', '').trim() : '';
-            names.push(text.split(' · ')[0].trim());
+            var parts = text.split(' · ');
+            names.push((parts.length > 1 ? parts[1] : parts[0]).trim());
           });
           if (names.length === 0) return;
           total += names.length;

@@ -411,6 +411,19 @@ def hamummal_review(review_id):
         except Exception:
             pass  # 화면엔 바로 반영하고, 저장은 실패해도 다음에 다시 시도하면 됨
 
+    _clean_ambiguous = []
+    for _amb in entry.get("ambiguous") or []:
+        _kept = [c for c in _amb.get("candidates") or [] if str(c.get("id")) not in _matched_ids_now]
+        if _kept:
+            _amb["candidates"] = _kept
+            _clean_ambiguous.append(_amb)
+    if len(_clean_ambiguous) != len(entry.get("ambiguous") or []):
+        entry["ambiguous"] = _clean_ambiguous
+        try:
+            db_client.update_review_team_entry(review_id, my_team, entry)
+        except Exception:
+            pass
+
     team_applied = (data.get("applied_teams") or {}).get(my_team) or {}
     is_today = data["check_date"] == now_kst().date().isoformat()
     y, mo, d = map(int, data["check_date"].split("-"))
@@ -568,6 +581,15 @@ def hamummal_review_fix_name(review_id):
                 found_in = "matched"
                 break
     if target is None:
+        for amb in entry.get("ambiguous") or []:
+            for c in amb.get("candidates") or []:
+                if str(c.get("id")) == str(member_id):
+                    target = c
+                    found_in = "ambiguous"
+                    break
+            if target is not None:
+                break
+    if target is None:
         return jsonify(ok=False, error="이 조에서 해당 조원을 찾지 못했어요."), 404
 
     try:
@@ -596,6 +618,13 @@ def hamummal_review_fix_name(review_id):
             entry["unmatched_members"] = [
                 m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
             ]
+            cleaned_ambiguous = []
+            for amb in entry.get("ambiguous") or []:
+                kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
+                if kept:
+                    amb["candidates"] = kept
+                    cleaned_ambiguous.append(amb)
+            entry["ambiguous"] = cleaned_ambiguous
             entry.setdefault("matched", []).append(target)
             try:
                 db_client.update_review_team_entry(review_id, team, entry)
@@ -612,7 +641,7 @@ def hamummal_review_fix_name(review_id):
     except Exception as e:
         return jsonify(ok=False, error=f"다른 날짜를 확인하지 못했습니다: {e}"), 500
 
-    fixed_dates = [data["check_date"]] if (found_in == "unmatched" and current_matched) else []
+    fixed_dates = [data["check_date"]] if (found_in in ("unmatched", "ambiguous") and current_matched) else []
     for row in other_rows:
         if str(row["id"]) == str(review_id):
             continue  # 지금 보고 있는 날짜는 위에서 이미 처리함
@@ -630,7 +659,15 @@ def hamummal_review_fix_name(review_id):
                 row_target = m
                 break
         if row_target is None:
-            continue  # 이 날짜엔 애초에 "미제출"로 남아있지 않음 (건드릴 필요 없음)
+            for amb in row_entry.get("ambiguous") or []:
+                for c in amb.get("candidates") or []:
+                    if str(c.get("id")) == str(member_id):
+                        row_target = c
+                        break
+                if row_target is not None:
+                    break
+        if row_target is None:
+            continue  # 이 날짜엔 애초에 "미제출"/"확인필요"로 남아있지 않음 (건드릴 필요 없음)
 
         row_matched_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
         if row_matched_raw is None:
@@ -639,6 +676,13 @@ def hamummal_review_fix_name(review_id):
         row_entry["unmatched_members"] = [
             m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
         ]
+        row_cleaned_ambiguous = []
+        for amb in row_entry.get("ambiguous") or []:
+            kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
+            if kept:
+                amb["candidates"] = kept
+                row_cleaned_ambiguous.append(amb)
+        row_entry["ambiguous"] = row_cleaned_ambiguous
         row_target["_matched_raw"] = row_matched_raw
         row_entry.setdefault("matched", []).append(row_target)
 
