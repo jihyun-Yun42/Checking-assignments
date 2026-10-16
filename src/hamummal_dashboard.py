@@ -55,7 +55,7 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
         match["_phone"] = login_phone
         result[team] = match
 
-    return {"teams": result, "submitter_count": len(submitters)}
+    return {"teams": result, "submitter_count": len(submitters), "chat_senders": sorted(submitters)}
 
 
 def apply_review(review: dict, check_date_str: str) -> dict:

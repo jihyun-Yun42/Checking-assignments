@@ -373,14 +373,19 @@ def set_display_name_override(team: str, member_id, name: str):
 # Vercel 등 서버리스 환경에서는 요청 간에 로컬 디스크가 유지된다는 보장이 없어서
 # Postgres로 옮김) ---
 
-def save_review(review: dict, check_date_str: str, window_desc: str, submitter_count: int = 0) -> str:
+def save_review(
+    review: dict, check_date_str: str, window_desc: str, submitter_count: int = 0, chat_senders=None,
+) -> str:
     review_id = uuid.uuid4().hex[:12]
     _query(
         '''
-        INSERT INTO hamummal_reviews (id, check_date, window_desc, review, submitter_count)
-        VALUES (%s, %s, %s, %s::jsonb, %s)
+        INSERT INTO hamummal_reviews (id, check_date, window_desc, review, submitter_count, chat_senders)
+        VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb)
         ''',
-        (review_id, check_date_str, window_desc, json.dumps(review, ensure_ascii=False), submitter_count),
+        (
+            review_id, check_date_str, window_desc, json.dumps(review, ensure_ascii=False),
+            submitter_count, json.dumps(chat_senders or [], ensure_ascii=False),
+        ),
         fetch="none",
     )
     return review_id
@@ -391,7 +396,7 @@ def load_review(review_id: str):
         '''
         SELECT
             to_char(check_date, 'YYYY-MM-DD') AS check_date,
-            window_desc, review, submitter_count, applied_teams
+            window_desc, review, submitter_count, applied_teams, chat_senders
         FROM hamummal_reviews WHERE id = %s
         ''',
         (review_id,),
@@ -405,6 +410,7 @@ def load_review(review_id: str):
         "review": row["review"],
         "submitter_count": row["submitter_count"],
         "applied_teams": row["applied_teams"] or {},
+        "chat_senders": row.get("chat_senders") or [],
     }
 
 
@@ -444,7 +450,9 @@ def list_team_reviews(team: str) -> list:
     # ("?" 연산자: review jsonb가 team을 top-level 키로 가지고 있는지 검사).
     return _query(
         '''
-        SELECT id, to_char(check_date, 'YYYY-MM-DD') AS check_date, review, applied_teams
+        SELECT
+            id, to_char(check_date, 'YYYY-MM-DD') AS check_date,
+            review, applied_teams, chat_senders
         FROM hamummal_reviews
         WHERE review ? %s
         ORDER BY check_date

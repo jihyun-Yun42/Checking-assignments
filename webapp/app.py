@@ -13,6 +13,11 @@ from src import (
 )
 from src.time_window import TZ, format_kst_timestamp, now_kst
 
+# 진행 시간이 날짜별로 따로 저장돼 있지 않은 날짜에 쓰는 기본값
+# (관리자가 한 번도 '진행 시간 저장'을 누르지 않았어도 분석이 건너뛰어지지 않도록).
+DEFAULT_HAMUMMAL_START = "13:30"
+DEFAULT_HAMUMMAL_END = "14:01"
+
 app = Flask(__name__)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=365)
@@ -271,12 +276,14 @@ def hamummal_upload():
         try:
             candidate_dates = hamummal_parser.detect_candidate_dates(str(save_path))
             date_windows = db_client.get_hamummal_date_windows(cohort_name)
-            processed, skipped = [], []
+            processed = []
             for date_str in candidate_dates:
-                win = date_windows.get(date_str)
-                if not win:
-                    skipped.append(date_str)
-                    continue
+                # 이 날짜에 명시적으로 저장된 진행 시간이 없으면 기본값(13:30~14:01)으로
+                # 분석한다 — 화면에 기본값이 미리 채워져 있어도 "저장" 버튼을 따로
+                # 누르지 않으면 DB에는 그 값이 없어서, 예전에는 여기서 건너뛰고 있었다.
+                win = date_windows.get(date_str) or {
+                    "start": DEFAULT_HAMUMMAL_START, "end": DEFAULT_HAMUMMAL_END,
+                }
                 y, mo, d = map(int, date_str.split("-"))
                 sh, sm = map(int, win["start"].split(":"))
                 eh, em = map(int, win["end"].split(":"))
@@ -286,6 +293,7 @@ def hamummal_upload():
                 db_client.save_review(
                     computed["teams"], date_str, f"{win['start']}~{win['end']}",
                     submitter_count=computed["submitter_count"],
+                    chat_senders=computed["chat_senders"],
                 )
                 processed.append(date_str)
         finally:
@@ -295,12 +303,7 @@ def hamummal_upload():
                 pass
 
         if processed:
-            msg = f"{len(processed)}개 날짜 분석 완료: {', '.join(processed)}"
-            if skipped:
-                msg += f" (진행 시간 미설정으로 건너뜀: {', '.join(skipped)})"
-            flash(msg, "success")
-        elif skipped:
-            flash(f"진행 시간이 설정 안 된 날짜뿐이에요: {', '.join(skipped)}. 아래에서 시간 설정 후 다시 업로드해주세요.")
+            flash(f"{len(processed)}개 날짜 분석 완료: {', '.join(processed)}", "success")
         else:
             flash("음성메시지를 20명 이상 보낸 날짜를 찾지 못했어요.")
         return redirect(url_for("hamummal_upload"))
@@ -309,7 +312,7 @@ def hamummal_upload():
     hamummal_start_date = cohort.get("하멈말시작일")
     today_str = now_kst().date().isoformat()
     existing_windows = db_client.get_hamummal_date_windows(cohort_name)
-    default_start, default_end = "13:30", "14:01"
+    default_start, default_end = DEFAULT_HAMUMMAL_START, DEFAULT_HAMUMMAL_END
 
     date_window_dates = []
     if hamummal_start_date:
@@ -375,6 +378,16 @@ def hamummal_review(review_id):
     y, mo, d = map(int, data["check_date"].split("-"))
     check_date_label = f"{mo}월 {d}일자"
     window_desc_label = (data["window_desc"] or "").replace("~", " ~ ")
+
+    # "이름 고치기" 팝업에서 쓸 자료: 이 날짜 대화에서 실제로 제출 메시지를 보낸
+    # 사람 이름 목록(chat_senders)과, 그 중 이미 우리 조의 누군가로 매칭된 이름
+    # (매칭 안 된 이름에는 팝업에서 회색으로 "(매칭안됨)" 표시를 해주기 위함).
+    chat_senders = data.get("chat_senders") or []
+    matched_raw_names = [
+        m.get("_matched_raw") for m in (full_review[my_team].get("matched") or [])
+        if m.get("_matched_raw")
+    ]
+
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -384,6 +397,8 @@ def hamummal_review(review_id):
         window_desc_label=window_desc_label,
         review={my_team: full_review[my_team]},
         submitter_count=data.get("submitter_count", 0),
+        chat_senders=chat_senders,
+        matched_raw_names=matched_raw_names,
         apply_enabled=bool(cohort) and db_client.is_hamummal_apply_enabled(cohort),
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
@@ -505,7 +520,9 @@ def hamummal_review_fix_name(review_id):
     fixed_dates = []
     for row in other_rows:
         if str(row["id"]) == str(review_id):
-            # 지금 보고 있는 이 검토는 위에서 이미 옮겨둔 target/entry를 그대로 쓴다.
+            # 지금 보고 있는 이 검토는 위에서 이미 옮겨둔 target/entry를 그대로 쓴다
+            # (지금 화면에서 직접 고친 거라 바로 믿고 반영 — 다른 날짜와 달리
+            # chat_senders 대조는 하지 않는다).
             try:
                 db_client.update_review_team_entry(review_id, team, entry)
             except Exception as e:
@@ -526,6 +543,13 @@ def hamummal_review_fix_name(review_id):
                 row_target = m
                 break
         if row_target is None:
+            continue  # 이 날짜엔 애초에 "미제출"로 남아있지 않음 (건드릴 필요 없음)
+
+        # 다른 날짜는 자동으로 제출 완료 처리하기 전에, 그 날짜 대화에 이 이름으로
+        # 실제로 보낸 메시지가 있었는지 꼭 확인한다 — 그래야 그 조원이 "진짜로
+        # 미제출"인 날짜까지 한꺼번에 제출 완료로 바뀌는 걸 막을 수 있다.
+        row_chat_senders = row.get("chat_senders") or []
+        if display_name not in row_chat_senders:
             continue
 
         row_entry["unmatched_members"] = [

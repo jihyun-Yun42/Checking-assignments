@@ -47,12 +47,22 @@
        justify-content:center}
   .mark-submitted-btn:hover{color:#0a7a2f}
 
-  .fixname-btn{flex-shrink:0;border:none;background:none;color:#bbb;
-       font-size:14px;line-height:1;padding:2px 4px;
-       cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
-       justify-content:center}
-  .fixname-btn:hover{color:#8a5a00}
   .row-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+
+  .fixname-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;
+       text-decoration-color:#ccc}
+  .fixname-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
+
+  #fixname-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
+       border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
+  .fixname-list{max-height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;margin-bottom:4px}
+  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
+       display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .fixname-item:last-child{border-bottom:none}
+  .fixname-item:hover{background:#f8f5ee}
+  .fixname-item .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
+  .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
+  .fixname-empty{font-size:13px;color:#999;text-align:center;padding:14px 0;line-height:1.5}
 
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
        align-items:center;justify-content:center;padding:20px;z-index:100}
@@ -136,16 +146,17 @@
       <div class="unmatched-list">
         {% for m in data.unmatched_members %}
           <div class="row miss" data-member-id="{{ m.id }}">
-            <span>{{ m.nickname }} ({{ m.real_name }})</span>
             {% if not applied %}
+              <span class="fixname-trigger" role="button" tabindex="0" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
+                title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m.nickname }} ({{ m.real_name }})</span>
               <span class="row-actions">
-                <button type="button" class="fixname-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
-                  title="카카오톡 이름이 달라요 (이름 수정)" aria-label="카카오톡 이름이 달라요 (이름 수정)">✏️</button>
                 <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
                   data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
                   title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
               </span>
+            {% else %}
+              <span>{{ m.nickname }} ({{ m.real_name }})</span>
             {% endif %}
           </div>
         {% endfor %}
@@ -177,11 +188,30 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="fixname-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">이름 고치기</p>
+      <p class="modal-desc">카카오톡 소통방에서 쓰는 이름(또는 닉네임)이 소리튠에 등록된 이름과 같아야 자동으로
+        매칭돼요. 아래 목록은 이 날짜 대화에서 실제로 제출 메시지를 보낸 사람들이에요 — 본인 이름을 찾아서
+        누르면 바로 제출 완료로 바뀌어요. 이름을 맞게 입력해도 소통방에서 이 시간대에 한 번도 메시지를
+        보내지 않았으면 계속 매칭되지 않을 수 있어요 — 목록에 이름이 안 보이면 그 이유일 수 있어요.</p>
+      <input type="text" id="fixname-search" placeholder="이름 검색" autocomplete="off">
+      <div class="fixname-list" id="fixname-list"></div>
+      <p class="fixname-empty" id="fixname-empty" hidden>이 날짜의 참가자 목록을 찾지 못했어요 (오래된 데이터일 수 있어요).
+        위 검색창에 카카오톡 이름을 직접 입력하면 그 이름으로 저장할 수 있어요.</p>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="fixname-cancel">취소</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     (function () {
       var CONFIRM_MATCH_URL = {{ url_for('hamummal_review_confirm_match', review_id=review_id) | tojson }};
       var UNCONFIRM_MATCH_URL = {{ url_for('hamummal_review_unconfirm_match', review_id=review_id) | tojson }};
       var FIX_NAME_URL = {{ url_for('hamummal_review_fix_name', review_id=review_id) | tojson }};
+      var CHAT_SENDERS = {{ chat_senders | tojson }};
+      var MATCHED_RAW_NAMES = {{ matched_raw_names | tojson }};
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -318,83 +348,164 @@
       }
       wireMarkSubmittedButtons();
 
+      var fixnameModal = document.getElementById('fixname-modal');
+      var fixnameSearch = document.getElementById('fixname-search');
+      var fixnameList = document.getElementById('fixname-list');
+      var fixnameEmpty = document.getElementById('fixname-empty');
+      var fixnameCancel = document.getElementById('fixname-cancel');
+      var fixnameTarget = null; // { team, memberId, nickname, realName, row, teamEl }
+
+      var matchedRawSet = {};
+      MATCHED_RAW_NAMES.forEach(function (n) { matchedRawSet[n] = true; });
+
+      function closeFixnameModal() {
+        fixnameModal.hidden = true;
+        fixnameTarget = null;
+      }
+
+      function renderFixnameList() {
+        var q = fixnameSearch.value.trim();
+        var qLower = q.toLowerCase();
+        var matches = CHAT_SENDERS.filter(function (name) {
+          return !qLower || name.toLowerCase().indexOf(qLower) !== -1;
+        });
+
+        fixnameList.innerHTML = '';
+        matches.forEach(function (name) {
+          var item = document.createElement('div');
+          item.className = 'fixname-item';
+
+          var nameSpan = document.createElement('span');
+          nameSpan.textContent = name;
+          item.appendChild(nameSpan);
+
+          if (!matchedRawSet[name]) {
+            var tag = document.createElement('span');
+            tag.className = 'unmatched-tag';
+            tag.textContent = '(매칭안됨)';
+            item.appendChild(tag);
+          }
+
+          item.addEventListener('click', function () { submitFixName(name); });
+          fixnameList.appendChild(item);
+        });
+
+        if (q && CHAT_SENDERS.indexOf(q) === -1) {
+          var manual = document.createElement('div');
+          manual.className = 'fixname-item fixname-item-manual';
+          manual.textContent = '"' + q + '" (으)로 직접 입력해서 저장';
+          manual.addEventListener('click', function () { submitFixName(q); });
+          fixnameList.appendChild(manual);
+        }
+
+        fixnameEmpty.hidden = !(matches.length === 0 && !q);
+      }
+
+      function openFixnameModal(trigger) {
+        fixnameTarget = {
+          team: trigger.getAttribute('data-team'),
+          memberId: trigger.getAttribute('data-member-id'),
+          nickname: trigger.getAttribute('data-nickname'),
+          realName: trigger.getAttribute('data-real-name'),
+          row: trigger.closest('.row.miss'),
+          teamEl: trigger.closest('.team'),
+        };
+        fixnameSearch.value = '';
+        renderFixnameList();
+        fixnameModal.hidden = false;
+        fixnameSearch.focus();
+      }
+
       function wireFixNameButtons() {
-        document.querySelectorAll('.unmatched-list .fixname-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            var team = btn.getAttribute('data-team');
-            var memberId = btn.getAttribute('data-member-id');
-            var nickname = btn.getAttribute('data-nickname');
-            var realName = btn.getAttribute('data-real-name');
-
-            var newName = window.prompt(
-              nickname + ' (' + realName + ')\n\n카카오톡에서 실제로 쓰는 이름을 입력해주세요.\n(다음부터는 이 이름으로 자동 매칭돼요)',
-              nickname
-            );
-            if (newName === null) return;
-            newName = newName.trim();
-            if (!newName) return;
-
-            var row = btn.closest('.row.miss');
-            var teamEl = btn.closest('.team');
-            btn.disabled = true;
-
-            fetch(FIX_NAME_URL, {
-              method: 'POST',
-              credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ team: team, member_id: memberId, display_name: newName }),
-            })
-              .then(function (res) { return res.json(); })
-              .then(function (data) {
-                if (!data.ok) {
-                  alert(data.error || '저장하지 못했습니다.');
-                  btn.disabled = false;
-                  return;
-                }
-
-                row.remove();
-                bumpCount(teamEl, '.unmatched-count', -1);
-                var emptyMissEl = teamEl.querySelector('.unmatched-empty');
-                if (emptyMissEl) emptyMissEl.remove();
-
-                var matchedList = teamEl.querySelector('.matched-list');
-                var newRow = document.createElement('div');
-                newRow.className = 'row ok';
-                newRow.setAttribute('data-member-id', memberId);
-
-                var span = document.createElement('span');
-                span.textContent = '✅ ' + nickname + ' (' + realName + ') · ' + newName;
-                newRow.appendChild(span);
-
-                newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
-                  newRow.remove();
-                  bumpCount(teamEl, '.matched-count', -1);
-                  addHiddenExcludeField(team, memberId);
-                }));
-
-                matchedList.appendChild(newRow);
-                bumpCount(teamEl, '.matched-count', 1);
-
-                var emptyEl = teamEl.querySelector('.matched-empty');
-                if (emptyEl) emptyEl.remove();
-
-                var fixedDates = data.fixed_dates || [];
-                if (fixedDates.length > 1) {
-                  alert(
-                    nickname + ' (' + realName + ') → ' + newName + '\n\n' +
-                    '이미 올라온 파일에 있던 다른 날짜(' + fixedDates.length + '개)의 미제출도 ' +
-                    '같이 "' + newName + '"으로 고쳐서 제출 완료로 바꿨어요.\n(' + fixedDates.join(', ') + ')'
-                  );
-                }
-              })
-              .catch(function () {
-                alert('네트워크 오류로 저장하지 못했습니다.');
-                btn.disabled = false;
-              });
+        document.querySelectorAll('.unmatched-list .fixname-trigger').forEach(function (trigger) {
+          trigger.addEventListener('click', function () { openFixnameModal(trigger); });
+          trigger.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openFixnameModal(trigger);
+            }
           });
         });
       }
       wireFixNameButtons();
+
+      fixnameSearch.addEventListener('input', renderFixnameList);
+      fixnameCancel.addEventListener('click', closeFixnameModal);
+      fixnameModal.addEventListener('click', function (e) {
+        if (e.target === fixnameModal) closeFixnameModal();
+      });
+
+      function submitFixName(rawNewName) {
+        if (!fixnameTarget) return;
+        var target = fixnameTarget;
+        var newName = rawNewName.trim();
+        if (!newName) return;
+
+        fixnameList.style.pointerEvents = 'none';
+        fixnameList.style.opacity = '.5';
+
+        fetch(FIX_NAME_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ team: target.team, member_id: target.memberId, display_name: newName }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              alert(data.error || '저장하지 못했습니다.');
+              return;
+            }
+
+            closeFixnameModal();
+
+            var row = target.row, teamEl = target.teamEl;
+            var team = target.team, memberId = target.memberId;
+            var nickname = target.nickname, realName = target.realName;
+
+            row.remove();
+            bumpCount(teamEl, '.unmatched-count', -1);
+            var emptyMissEl = teamEl.querySelector('.unmatched-empty');
+            if (emptyMissEl) emptyMissEl.remove();
+
+            var matchedList = teamEl.querySelector('.matched-list');
+            var newRow = document.createElement('div');
+            newRow.className = 'row ok';
+            newRow.setAttribute('data-member-id', memberId);
+
+            var span = document.createElement('span');
+            span.textContent = '\u2705 ' + nickname + ' (' + realName + ') \u00b7 ' + newName;
+            newRow.appendChild(span);
+
+            newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
+              newRow.remove();
+              bumpCount(teamEl, '.matched-count', -1);
+              addHiddenExcludeField(team, memberId);
+            }));
+
+            matchedList.appendChild(newRow);
+            bumpCount(teamEl, '.matched-count', 1);
+
+            var emptyEl = teamEl.querySelector('.matched-empty');
+            if (emptyEl) emptyEl.remove();
+
+            var fixedDates = data.fixed_dates || [];
+            if (fixedDates.length > 1) {
+              alert(
+                nickname + ' (' + realName + ') \u2192 ' + newName + '\n\n' +
+                '\uc774\ubbf8 \uc62c\ub77c\uc628 \ud30c\uc77c\uc5d0 \uc788\ub358 \ub2e4\ub978 \ub0a0\uc9dc(' + fixedDates.length + '\uac1c)\uc758 \ubbf8\uc81c\ucd9c\ub3c4 ' +
+                '\uac19\uc774 "' + newName + '"\uc73c\ub85c \uace0\ucce4\uc5b4\uc694.\n(' + fixedDates.join(', ') + ')'
+              );
+            }
+          })
+          .catch(function () {
+            alert('\ub124\ud2b8\uc6cc\ud06c \uc624\ub958\ub85c \uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.');
+          })
+          .finally(function () {
+            fixnameList.style.pointerEvents = '';
+            fixnameList.style.opacity = '';
+          });
+      }
 
       document.querySelectorAll('.amb-checkbox').forEach(function (cb) {
         cb.addEventListener('change', function () {

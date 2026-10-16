@@ -38,6 +38,13 @@
   .inline-time-row div{flex:1}
   .inline-time-row label{font-size:12px;font-weight:normal;color:#888;margin-top:0}
   .inline-time-row input[type=time]{width:100%;padding:8px;margin-top:4px;font-size:14px;box-sizing:border-box}
+  details.window-details{margin-top:12px}
+  details.window-details summary{cursor:pointer;font-size:14px;font-weight:bold;color:#8a5a00;
+       padding:10px 12px;border:1px solid #eee;border-radius:10px;list-style:none}
+  details.window-details summary::-webkit-details-marker{display:none}
+  details.window-details summary::before{content:"▸ ";}
+  details.window-details[open] summary::before{content:"▾ ";}
+  details.window-details[open] summary{border-radius:10px 10px 0 0;border-bottom:none}
 </style>
 </head>
 <body>
@@ -98,21 +105,24 @@
   </form>
 
   {% if date_window_dates %}
-    <form method="post" action="{{ url_for('hamummal_upload_set_windows') }}">
-      <table class="window-table">
-        <thead><tr><th>날짜</th><th>시작 시각</th><th>종료 시각</th></tr></thead>
-        <tbody>
-          {% for row in date_window_dates %}
-            <tr class="{{ 'today-row' if row.date == today_str else '' }}">
-              <td>{{ row.date }}</td>
-              <td><input type="time" name="start__{{ row.date }}" value="{{ row.start }}"></td>
-              <td><input type="time" name="end__{{ row.date }}" value="{{ row.end }}"></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <button type="submit">진행 시간 저장</button>
-    </form>
+    <details class="window-details">
+      <summary>날짜별로 진행 시간 펼쳐서 보기/수정하기 ({{ date_window_dates|length }}개)</summary>
+      <form method="post" action="{{ url_for('hamummal_upload_set_windows') }}" style="border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:12px">
+        <table class="window-table">
+          <thead><tr><th>날짜</th><th>시작 시각</th><th>종료 시각</th></tr></thead>
+          <tbody>
+            {% for row in date_window_dates %}
+              <tr class="{{ 'today-row' if row.date == today_str else '' }}">
+                <td>{{ row.date }}</td>
+                <td><input type="time" name="start__{{ row.date }}" value="{{ row.start }}"></td>
+                <td><input type="time" name="end__{{ row.date }}" value="{{ row.end }}"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="submit">진행 시간 저장</button>
+      </form>
+    </details>
   {% endif %}
 
   <h2 class="section-h2">하멈말 대화 업로드</h2>
