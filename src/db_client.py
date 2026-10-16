@@ -375,16 +375,19 @@ def set_display_name_override(team: str, member_id, name: str):
 
 def save_review(
     review: dict, check_date_str: str, window_desc: str, submitter_count: int = 0, chat_senders=None,
+    all_chat_senders=None,
 ) -> str:
     review_id = uuid.uuid4().hex[:12]
     _query(
         '''
-        INSERT INTO hamummal_reviews (id, check_date, window_desc, review, submitter_count, chat_senders)
-        VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb)
+        INSERT INTO hamummal_reviews
+            (id, check_date, window_desc, review, submitter_count, chat_senders, all_chat_senders)
+        VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb)
         ''',
         (
             review_id, check_date_str, window_desc, json.dumps(review, ensure_ascii=False),
             submitter_count, json.dumps(chat_senders or [], ensure_ascii=False),
+            json.dumps(all_chat_senders or [], ensure_ascii=False),
         ),
         fetch="none",
     )
@@ -396,7 +399,7 @@ def load_review(review_id: str):
         '''
         SELECT
             to_char(check_date, 'YYYY-MM-DD') AS check_date,
-            window_desc, review, submitter_count, applied_teams, chat_senders
+            window_desc, review, submitter_count, applied_teams, chat_senders, all_chat_senders
         FROM hamummal_reviews WHERE id = %s
         ''',
         (review_id,),
@@ -411,6 +414,7 @@ def load_review(review_id: str):
         "submitter_count": row["submitter_count"],
         "applied_teams": row["applied_teams"] or {},
         "chat_senders": row.get("chat_senders") or [],
+        "all_chat_senders": row.get("all_chat_senders") or [],
     }
 
 

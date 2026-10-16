@@ -294,6 +294,7 @@ def hamummal_upload():
                     computed["teams"], date_str, f"{win['start']}~{win['end']}",
                     submitter_count=computed["submitter_count"],
                     chat_senders=computed["chat_senders"],
+                    all_chat_senders=computed["all_chat_senders"],
                 )
                 processed.append(date_str)
         finally:
@@ -403,10 +404,11 @@ def hamummal_review(review_id):
     check_date_label = f"{mo}월 {d}일자"
     window_desc_label = (data["window_desc"] or "").replace("~", " ~ ")
 
-    # "이름 고치기" 팝업에서 쓸 자료: 이 날짜 대화에서 실제로 제출 메시지를 보낸
-    # 사람 이름 목록(chat_senders)과, 그 중 이미 우리 조의 누군가로 매칭된 이름
-    # (매칭 안 된 이름에는 팝업에서 회색으로 "(매칭안됨)" 표시를 해주기 위함).
-    chat_senders = data.get("chat_senders") or []
+    # "이름 고치기" 팝업 검색용 — 날짜 상관없이 업로드 파일 전체에서 제출한
+    # 적 있는 사람 전체 목록. 매칭 판정(그 날짜에 정말 보냈는지)에는 이게 아니라
+    # 날짜별 chat_senders(entry 저장 시점의 그 날짜분)만 쓴다 — confirm-match/
+    # fix-name 라우트가 리뷰를 다시 불러와서 그쪽에서 직접 꺼내 쓴다.
+    all_chat_senders = data.get("all_chat_senders") or []
     matched_raw_names = [
         m.get("_matched_raw") for m in (entry.get("matched") or [])
         if m.get("_matched_raw")
@@ -424,7 +426,7 @@ def hamummal_review(review_id):
         window_desc_label=window_desc_label,
         review={my_team: entry},
         submitter_count=data.get("submitter_count", 0),
-        chat_senders=chat_senders,
+        chat_senders=all_chat_senders,
         matched_raw_names=matched_raw_names,
         display_name_overrides=display_name_overrides,
         apply_enabled=bool(cohort) and db_client.is_hamummal_apply_enabled(cohort),

@@ -32,6 +32,7 @@ ALTER TABLE cohorts ADD COLUMN IF NOT EXISTS hamummal_review_visible BOOLEAN NOT
 ALTER TABLE cohorts ADD COLUMN IF NOT EXISTS hamummal_apply_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE cohorts ADD COLUMN IF NOT EXISTS hamummal_start_date DATE;
 ALTER TABLE hamummal_reviews ADD COLUMN IF NOT EXISTS chat_senders JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE hamummal_reviews ADD COLUMN IF NOT EXISTS all_chat_senders JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 날짜별로 다르게 진행되는 하멈말 진행 시간 (관리자가 수동 설정, 나중에 수정 가능)
 CREATE TABLE IF NOT EXISTS hamummal_date_windows (
@@ -76,6 +77,7 @@ CREATE TABLE IF NOT EXISTS hamummal_reviews (
     review JSONB NOT NULL,                  -- 조별 매칭 결과 전체
     submitter_count INTEGER NOT NULL DEFAULT 0,
     applied_teams JSONB NOT NULL DEFAULT '{}'::jsonb,  -- 조별 "반영 완료" 기록
-    chat_senders JSONB NOT NULL DEFAULT '[]'::jsonb,  -- 이 날짜·시간대에 실제로 제출 메시지를 보낸 카카오톡 발신자 이름 목록
+    chat_senders JSONB NOT NULL DEFAULT '[]'::jsonb,  -- 이 날짜·시간대에 실제로 제출 메시지를 보낸 카카오톡 발신자 이름 목록 (매칭 판정용 — 날짜별로 다름)
+    all_chat_senders JSONB NOT NULL DEFAULT '[]'::jsonb,  -- 업로드한 파일 전체에서 날짜/시간 상관없이 제출 메시지를 보낸 적 있는 모든 발신자 이름 목록 ("이름 고치기" 검색용 — 매칭 판정에는 안 씀)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

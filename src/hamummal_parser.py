@@ -94,6 +94,22 @@ def extract_submitters(txt_path: str, window_start: datetime, window_end: dateti
     return submitters
 
 
+def extract_all_submitters(txt_path: str) -> set:
+    """
+    날짜·시간대와 상관없이, 업로드한 파일 전체에서 하멈말 제출 메시지를 보낸
+    적 있는 모든 사람의 집합을 돌려준다. "이름 고치기" 팝업에서 검색할 전체
+    참가자 목록으로만 쓰고, 실제 매칭 판정(그 날짜에 정말 보냈는지)은 여전히
+    날짜별로 window로 걸러낸 extract_submitters 결과로만 한다 — 그래야 진짜
+    미제출인 날이 과거 이름만 보고 제출로 둔갑하는 일이 없다.
+    """
+    submitters = set()
+    for ts, sender, content in _iter_messages(txt_path):
+        if not _is_submission(content):
+            continue
+        submitters.add(sender)
+    return submitters
+
+
 def detect_candidate_dates(txt_path: str, min_senders: int = 20) -> list:
     """
     대화 파일 전체를 날짜 구분 없이 훑어서, 하루에 "음성메시지"를 보낸 서로 다른
