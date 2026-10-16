@@ -111,3 +111,30 @@ def match_submitters(
     unmatched_members = [meta["member"] for mid, meta in member_meta.items() if mid not in matched_ids]
 
     return {"matched": matched, "unmatched_members": unmatched_members, "ambiguous": ambiguous}
+
+
+def find_chat_sender_match(display_name: str, chat_senders) -> str:
+    """
+    "이름 고치기"에서 고른(또는 직접 입력한) 이름이 특정 날짜의 실제 카카오톡
+    발신자 목록(chat_senders) 중 누구에 해당하는지 찾는다.
+
+    그냥 문자열이 똑같은 사람이 있으면 그 사람을 그대로 쓰지만, 회차(예:
+    "(7회)")는 매일 올라가서 날짜마다 끝부분이 다르므로, 회차를 뗀 나머지
+    이름이 같은 사람이 있으면 "그 날짜의 실제 회차가 붙은 원문"을 찾아 돌려준다
+    (그래야 다른 날짜로 그대로 옮겨붙여도 회차가 그 날짜 기준으로 맞게 남는다).
+    못 찾으면 None — 즉, 그 이름으로 그 날짜에 실제로 보낸 메시지가 없다는 뜻.
+    """
+    chat_senders = chat_senders or []
+    if display_name in chat_senders:
+        return display_name
+
+    body, _ = _strip_round(display_name)
+    target_tokens = _normalize_tokens(body)
+    if not target_tokens:
+        return None
+
+    for raw in chat_senders:
+        raw_body, _ = _strip_round(raw)
+        if _normalize_tokens(raw_body) == target_tokens:
+            return raw
+    return None

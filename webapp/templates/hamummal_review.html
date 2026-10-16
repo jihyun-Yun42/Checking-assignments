@@ -53,16 +53,27 @@
        text-decoration-color:#ccc}
   .fixname-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
 
-  #fixname-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
+  #fixname-search, #picker-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
        border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
-  .fixname-list{max-height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;margin-bottom:4px}
-  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
+  .fixname-list, .picker-list{height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;
+       margin-bottom:4px;box-sizing:border-box}
+  .fixname-item, .picker-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
        display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .fixname-item:last-child{border-bottom:none}
-  .fixname-item:hover{background:#f8f5ee}
-  .fixname-item .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
+  .fixname-item:last-child, .picker-item:last-child{border-bottom:none}
+  .fixname-item:hover, .picker-item:hover{background:#f8f5ee}
+  .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
   .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
-  .fixname-empty{font-size:13px;color:#999;text-align:center;padding:14px 0;line-height:1.5}
+  .fixname-item.fixname-item-empty, .picker-item.picker-item-empty{color:#999;cursor:default;
+       justify-content:center;text-align:center;line-height:1.5}
+  .fixname-item.fixname-item-empty:hover, .picker-item.picker-item-empty:hover{background:none}
+
+  .matched-raw{color:#999;font-size:12px;cursor:pointer;text-decoration:underline dotted;
+       text-underline-offset:2px;margin-left:4px}
+  .matched-raw:hover{color:#8a5a00}
+  .override-hint{color:#999;font-size:12px;margin-left:4px}
+
+  .amb-manual-trigger{font-size:13px;color:#8a5a00;cursor:pointer;text-decoration:underline;
+       margin:4px 0 0;display:inline-block}
 
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
        align-items:center;justify-content:center;padding:20px;z-index:100}
@@ -111,7 +122,7 @@
       <div class="matched-list">
         {% for m in data.matched %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m.nickname }} ({{ m.real_name }}){% if m.get('_matched_raw') %} · {{ m.get('_matched_raw') }}{% endif %}</span>
+            <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} {% if not applied %}<span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% else %}<span class="matched-raw">· {{ m.get('_matched_raw') }}</span>{% endif %}{% endif %}</span>
             {% if not applied %}
               <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
                 title="우리 조원 아님" aria-label="우리 조원 아님">✕</button>
@@ -133,10 +144,15 @@
                     class="amb-checkbox"
                     data-team="{{ team }}" data-member-id="{{ c.id }}"
                     data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
+                    data-display="{{ c | hname }}"
                     data-raw="{{ amb.raw }}">
-                  {{ c.nickname }} ({{ c.real_name }})
+                  {{ c | hname }}
                 </label>
               {% endfor %}
+              {% if not applied %}
+                <span class="amb-manual-trigger" role="button" tabindex="0"
+                  data-team="{{ team }}" data-raw="{{ amb.raw }}">선택지에 없어요 · 직접 입력할게요</span>
+              {% endif %}
             </div>
           {% endfor %}
         </div>
@@ -145,18 +161,20 @@
       <div class="section-title">미제출 추정 (<span class="unmatched-count">{{ data.unmatched_members|length }}</span>명)</div>
       <div class="unmatched-list">
         {% for m in data.unmatched_members %}
+          {% set override_name = display_name_overrides.get(m.id | string) %}
           <div class="row miss" data-member-id="{{ m.id }}">
             {% if not applied %}
-              <span class="fixname-trigger" role="button" tabindex="0" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
-                title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m.nickname }} ({{ m.real_name }})</span>
+              <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
+                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
+                title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
+                {% if override_name %}<span class="override-hint">· {{ override_name }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
               <span class="row-actions">
                 <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}"
+                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
                   title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
               </span>
             {% else %}
-              <span>{{ m.nickname }} ({{ m.real_name }})</span>
+              <span>{{ m | hname }}</span>
             {% endif %}
           </div>
         {% endfor %}
@@ -197,10 +215,21 @@
         보내지 않았으면 계속 매칭되지 않을 수 있어요 — 목록에 이름이 안 보이면 그 이유일 수 있어요.</p>
       <input type="text" id="fixname-search" placeholder="이름 검색" autocomplete="off">
       <div class="fixname-list" id="fixname-list"></div>
-      <p class="fixname-empty" id="fixname-empty" hidden>이 날짜의 참가자 목록을 찾지 못했어요 (오래된 데이터일 수 있어요).
-        위 검색창에 카카오톡 이름을 직접 입력하면 그 이름으로 저장할 수 있어요.</p>
       <div class="modal-actions">
         <button type="button" class="modal-btn modal-btn-cancel" id="fixname-cancel">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="picker-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">조원 직접 선택</p>
+      <p class="modal-desc">이 메시지를 실제로 보낸 사람이 선택지에 없을 때, 우리 조 미제출 명단에서
+        직접 찾아서 연결할 수 있어요.</p>
+      <input type="text" id="picker-search" placeholder="이름 검색" autocomplete="off">
+      <div class="picker-list" id="picker-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="picker-cancel">취소</button>
       </div>
     </div>
   </div>
@@ -299,44 +328,73 @@
       }
       wireStaticExcludeButtons();
 
-      function moveUnmatchedToMatched(btn) {
-        var team = btn.getAttribute('data-team');
-        var memberId = btn.getAttribute('data-member-id');
-        var nickname = btn.getAttribute('data-nickname');
-        var realName = btn.getAttribute('data-real-name');
-        var row = btn.closest('.row.miss');
-        var teamEl = btn.closest('.team');
-
+      // 미제출 목록에서 쓰던 행 하나를 통째로 제거한다 (이름 고치기 / 확인필요
+      // 선택 / 사실 제출했어요, 어느 경로로 제출자로 옮겨지든 공통으로 쓴다).
+      function removeUnmatchedRow(teamEl, memberId) {
+        var row = teamEl.querySelector('.unmatched-list .row.miss[data-member-id="' + memberId + '"]');
+        if (!row) return;
         row.remove();
         bumpCount(teamEl, '.unmatched-count', -1);
         var emptyMissEl = teamEl.querySelector('.unmatched-empty');
         if (emptyMissEl) emptyMissEl.remove();
+      }
 
+      // 제출자 목록에 새 행을 만들어 붙인다. rawText가 있으면 그 아래에 작은
+      // 회색 글씨로 보여주고, 눌러서 다시 고칠 수 있게 fixname-trigger로 만든다.
+      function addMatchedRow(teamEl, team, memberId, display, rawText) {
         var matchedList = teamEl.querySelector('.matched-list');
-        var newRow = document.createElement('div');
-        newRow.className = 'row ok';
-        newRow.setAttribute('data-member-id', memberId);
+        var row = document.createElement('div');
+        row.className = 'row ok';
+        row.setAttribute('data-member-id', memberId);
 
         var span = document.createElement('span');
-        span.textContent = '✅ ' + nickname + ' (' + realName + ')';
-        newRow.appendChild(span);
+        span.appendChild(document.createTextNode('✅ ' + display));
+        if (rawText) {
+          span.appendChild(document.createTextNode(' '));
+          var rawSpan = document.createElement('span');
+          rawSpan.className = 'matched-raw fixname-trigger';
+          rawSpan.setAttribute('role', 'button');
+          rawSpan.setAttribute('tabindex', '0');
+          rawSpan.title = '카카오톡 이름이 달라요 (눌러서 수정)';
+          rawSpan.setAttribute('data-mode', 'matched');
+          rawSpan.setAttribute('data-team', team);
+          rawSpan.setAttribute('data-member-id', memberId);
+          rawSpan.setAttribute('data-nickname', '');
+          rawSpan.setAttribute('data-real-name', '');
+          rawSpan.setAttribute('data-display', display);
+          rawSpan.textContent = '· ' + rawText;
+          wireOneFixnameTrigger(rawSpan);
+          span.appendChild(rawSpan);
+        }
+        row.appendChild(span);
 
-        // extra__ 히든필드를 새 행의 자식으로 넣어두면, 나중에 이 행을 제외
-        // 처리할 때 행을 통째로 지우는 것만으로 히든필드도 함께 사라진다
-        // (확인필요 체크박스를 제외할 때와 동일한 방식).
-        var extraInput = addHiddenExtraField(team, memberId);
-        newRow.appendChild(extraInput);
-
-        newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
-          newRow.remove();
+        row.appendChild(makeExcludeButton(team, memberId, display, function () {
+          row.remove();
           bumpCount(teamEl, '.matched-count', -1);
+          addHiddenExcludeField(team, memberId);
         }));
 
-        matchedList.appendChild(newRow);
+        matchedList.appendChild(row);
         bumpCount(teamEl, '.matched-count', 1);
-
         var emptyEl = teamEl.querySelector('.matched-empty');
         if (emptyEl) emptyEl.remove();
+        return row;
+      }
+
+      function moveUnmatchedToMatched(btn) {
+        var team = btn.getAttribute('data-team');
+        var memberId = btn.getAttribute('data-member-id');
+        var display = btn.getAttribute('data-display') ||
+          (btn.getAttribute('data-nickname') + ' (' + btn.getAttribute('data-real-name') + ')');
+        var teamEl = btn.closest('.team');
+
+        removeUnmatchedRow(teamEl, memberId);
+        var row = addMatchedRow(teamEl, team, memberId, display, null);
+        // "사실 제출했어요"는 소리튠에 아직 없는 메시지를 수동으로 체크하는
+        // 거라, extra__ 히든필드를 반영 폼에 심어둬야 한다 (확인필요 체크박스와
+        // 같은 방식). 행을 통째로 지우면 필드도 같이 사라지게 행의 자식으로 넣는다.
+        var extraInput = addHiddenExtraField(team, memberId);
+        row.appendChild(extraInput);
       }
 
       function wireMarkSubmittedButtons() {
@@ -348,12 +406,13 @@
       }
       wireMarkSubmittedButtons();
 
+      // ---------- 이름 고치기 팝업 ----------
+
       var fixnameModal = document.getElementById('fixname-modal');
       var fixnameSearch = document.getElementById('fixname-search');
       var fixnameList = document.getElementById('fixname-list');
-      var fixnameEmpty = document.getElementById('fixname-empty');
       var fixnameCancel = document.getElementById('fixname-cancel');
-      var fixnameTarget = null; // { team, memberId, nickname, realName, row, teamEl }
+      var fixnameTarget = null; // { mode, team, memberId, nickname, realName, display, row, teamEl }
 
       var matchedRawSet = {};
       MATCHED_RAW_NAMES.forEach(function (n) { matchedRawSet[n] = true; });
@@ -398,16 +457,23 @@
           fixnameList.appendChild(manual);
         }
 
-        fixnameEmpty.hidden = !(matches.length === 0 && !q);
+        if (matches.length === 0 && !q) {
+          var empty = document.createElement('div');
+          empty.className = 'fixname-item fixname-item-empty';
+          empty.textContent = '이 날짜의 참가자 목록을 찾지 못했어요. 위 검색창에 이름을 입력해서 직접 저장할 수 있어요.';
+          fixnameList.appendChild(empty);
+        }
       }
 
       function openFixnameModal(trigger) {
+        var mode = trigger.getAttribute('data-mode') || 'unmatched';
         fixnameTarget = {
+          mode: mode,
           team: trigger.getAttribute('data-team'),
           memberId: trigger.getAttribute('data-member-id'),
           nickname: trigger.getAttribute('data-nickname'),
           realName: trigger.getAttribute('data-real-name'),
-          row: trigger.closest('.row.miss'),
+          display: trigger.getAttribute('data-display'),
           teamEl: trigger.closest('.team'),
         };
         fixnameSearch.value = '';
@@ -416,16 +482,18 @@
         fixnameSearch.focus();
       }
 
-      function wireFixNameButtons() {
-        document.querySelectorAll('.unmatched-list .fixname-trigger').forEach(function (trigger) {
-          trigger.addEventListener('click', function () { openFixnameModal(trigger); });
-          trigger.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              openFixnameModal(trigger);
-            }
-          });
+      function wireOneFixnameTrigger(trigger) {
+        trigger.addEventListener('click', function () { openFixnameModal(trigger); });
+        trigger.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openFixnameModal(trigger);
+          }
         });
+      }
+
+      function wireFixNameButtons() {
+        document.querySelectorAll('.fixname-trigger').forEach(wireOneFixnameTrigger);
       }
       wireFixNameButtons();
 
@@ -434,6 +502,16 @@
       fixnameModal.addEventListener('click', function (e) {
         if (e.target === fixnameModal) closeFixnameModal();
       });
+
+      function announceFixedDates(display, newName, fixedDates) {
+        if (fixedDates.length > 1) {
+          alert(
+            display + ' → ' + newName + '\n\n' +
+            '이미 올라온 파일에 있던 다른 날짜(' + fixedDates.length + '개)의 미제출도 ' +
+            '같이 "' + newName + '"으로 고쳐서 제출 완료로 바꿨어요.\n(' + fixedDates.join(', ') + ')'
+          );
+        }
+      }
 
       function submitFixName(rawNewName) {
         if (!fixnameTarget) return;
@@ -459,53 +537,180 @@
 
             closeFixnameModal();
 
-            var row = target.row, teamEl = target.teamEl;
+            var teamEl = target.teamEl;
             var team = target.team, memberId = target.memberId;
-            var nickname = target.nickname, realName = target.realName;
+            var display = target.display || target.nickname + ' (' + target.realName + ')';
 
-            row.remove();
-            bumpCount(teamEl, '.unmatched-count', -1);
-            var emptyMissEl = teamEl.querySelector('.unmatched-empty');
-            if (emptyMissEl) emptyMissEl.remove();
-
-            var matchedList = teamEl.querySelector('.matched-list');
-            var newRow = document.createElement('div');
-            newRow.className = 'row ok';
-            newRow.setAttribute('data-member-id', memberId);
-
-            var span = document.createElement('span');
-            span.textContent = '\u2705 ' + nickname + ' (' + realName + ') \u00b7 ' + newName;
-            newRow.appendChild(span);
-
-            newRow.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
-              newRow.remove();
-              bumpCount(teamEl, '.matched-count', -1);
-              addHiddenExcludeField(team, memberId);
-            }));
-
-            matchedList.appendChild(newRow);
-            bumpCount(teamEl, '.matched-count', 1);
-
-            var emptyEl = teamEl.querySelector('.matched-empty');
-            if (emptyEl) emptyEl.remove();
-
-            var fixedDates = data.fixed_dates || [];
-            if (fixedDates.length > 1) {
-              alert(
-                nickname + ' (' + realName + ') \u2192 ' + newName + '\n\n' +
-                '\uc774\ubbf8 \uc62c\ub77c\uc628 \ud30c\uc77c\uc5d0 \uc788\ub358 \ub2e4\ub978 \ub0a0\uc9dc(' + fixedDates.length + '\uac1c)\uc758 \ubbf8\uc81c\ucd9c\ub3c4 ' +
-                '\uac19\uc774 "' + newName + '"\uc73c\ub85c \uace0\ucce4\uc5b4\uc694.\n(' + fixedDates.join(', ') + ')'
+            if (target.mode === 'matched') {
+              // 이미 제출자였던 사람 — 표시용 카카오 원문 텍스트만 바꿔치기한다.
+              var rawSpan = teamEl.querySelector(
+                '.matched-list .row.ok[data-member-id="' + memberId + '"] .matched-raw'
               );
+              if (rawSpan) rawSpan.textContent = '· ' + (data.member && data.member._matched_raw ? data.member._matched_raw : newName);
+              announceFixedDates(display, newName, data.fixed_dates || []);
+              return;
             }
+
+            if (!data.matched) {
+              // 이름은 등록됐지만, 이 날짜 대화에서는 그 이름으로 보낸 메시지를
+              // 찾지 못해서 미제출 상태가 유지됨 — 화면에 그 사실을 보여준다.
+              var row = teamEl.querySelector('.unmatched-list .row.miss[data-member-id="' + memberId + '"]');
+              if (row) {
+                var tagEl = row.querySelector('.unmatched-tag');
+                if (tagEl) {
+                  tagEl.className = 'override-hint';
+                  tagEl.textContent = '· ' + newName;
+                } else {
+                  var hintEl = row.querySelector('.override-hint');
+                  if (hintEl) hintEl.textContent = '· ' + newName;
+                }
+              }
+              alert(
+                display + '\n\n"' + newName + '"(으)로 이름을 등록했어요. 다음 업로드부터는 자동으로 매칭돼요.\n' +
+                '다만 이 날짜 대화에서는 그 이름으로 보낸 제출 메시지를 찾지 못해서, 이 날짜는 아직 미제출로 남아있어요.'
+              );
+              return;
+            }
+
+            // 미제출 → 제출자로 이동
+            removeUnmatchedRow(teamEl, memberId);
+            addMatchedRow(teamEl, team, memberId, display, data.member && data.member._matched_raw ? data.member._matched_raw : newName);
+            announceFixedDates(display, newName, data.fixed_dates || []);
           })
           .catch(function () {
-            alert('\ub124\ud2b8\uc6cc\ud06c \uc624\ub958\ub85c \uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.');
+            alert('네트워크 오류로 저장하지 못했습니다.');
           })
           .finally(function () {
             fixnameList.style.pointerEvents = '';
             fixnameList.style.opacity = '';
           });
       }
+
+      // ---------- 조원 직접 선택 팝업 (확인필요에서 "선택지에 없어요") ----------
+
+      var pickerModal = document.getElementById('picker-modal');
+      var pickerSearch = document.getElementById('picker-search');
+      var pickerList = document.getElementById('picker-list');
+      var pickerCancel = document.getElementById('picker-cancel');
+      var pickerTarget = null; // { team, raw, teamEl, ambBlock }
+
+      function closePickerModal() {
+        pickerModal.hidden = true;
+        pickerTarget = null;
+      }
+
+      function renderPickerList() {
+        if (!pickerTarget) return;
+        var q = pickerSearch.value.trim().toLowerCase();
+        var rows = pickerTarget.teamEl.querySelectorAll('.unmatched-list .row.miss');
+        var items = [];
+        rows.forEach(function (row) {
+          var trigger = row.querySelector('.fixname-trigger');
+          if (!trigger) return;
+          var display = trigger.getAttribute('data-display') || '';
+          if (q && display.toLowerCase().indexOf(q) === -1) return;
+          items.push({
+            memberId: trigger.getAttribute('data-member-id'),
+            nickname: trigger.getAttribute('data-nickname'),
+            realName: trigger.getAttribute('data-real-name'),
+            display: display,
+          });
+        });
+
+        pickerList.innerHTML = '';
+        items.forEach(function (it) {
+          var el = document.createElement('div');
+          el.className = 'picker-item';
+          el.textContent = it.display;
+          el.addEventListener('click', function () { confirmPicker(it); });
+          pickerList.appendChild(el);
+        });
+
+        if (items.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'picker-item picker-item-empty';
+          empty.textContent = '검색 결과가 없어요.';
+          pickerList.appendChild(empty);
+        }
+      }
+
+      function openPickerModal(trigger) {
+        pickerTarget = {
+          team: trigger.getAttribute('data-team'),
+          raw: trigger.getAttribute('data-raw'),
+          teamEl: trigger.closest('.team'),
+          ambBlock: trigger.closest('.row.amb'),
+        };
+        pickerSearch.value = '';
+        renderPickerList();
+        pickerModal.hidden = false;
+        pickerSearch.focus();
+      }
+
+      function wireAmbManualTriggers() {
+        document.querySelectorAll('.amb-manual-trigger').forEach(function (trigger) {
+          trigger.addEventListener('click', function () { openPickerModal(trigger); });
+          trigger.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openPickerModal(trigger);
+            }
+          });
+        });
+      }
+      wireAmbManualTriggers();
+
+      pickerSearch.addEventListener('input', renderPickerList);
+      pickerCancel.addEventListener('click', closePickerModal);
+      pickerModal.addEventListener('click', function (e) {
+        if (e.target === pickerModal) closePickerModal();
+      });
+
+      function removeAmbBlockIfDone(teamEl, ambBlock) {
+        if (ambBlock) ambBlock.remove();
+        var ambLeft = bumpCount(teamEl, '.amb-count', -1);
+        if (ambLeft === 0) {
+          var ambSection = teamEl.querySelector('.amb-section');
+          if (ambSection) ambSection.remove();
+        }
+      }
+
+      function confirmPicker(it) {
+        if (!pickerTarget) return;
+        var target = pickerTarget;
+
+        pickerList.style.pointerEvents = 'none';
+        pickerList.style.opacity = '.5';
+
+        fetch(CONFIRM_MATCH_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            team: target.team, member_id: it.memberId, nickname: it.nickname, real_name: it.realName, raw: target.raw,
+          }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              alert(data.error || '저장하지 못했습니다.');
+              return;
+            }
+            closePickerModal();
+            removeUnmatchedRow(target.teamEl, it.memberId);
+            addMatchedRow(target.teamEl, target.team, it.memberId, it.display, target.raw);
+            removeAmbBlockIfDone(target.teamEl, target.ambBlock);
+          })
+          .catch(function () {
+            alert('네트워크 오류로 저장하지 못했습니다.');
+          })
+          .finally(function () {
+            pickerList.style.pointerEvents = '';
+            pickerList.style.opacity = '';
+          });
+      }
+
+      // ---------- 확인필요 체크박스 ----------
 
       document.querySelectorAll('.amb-checkbox').forEach(function (cb) {
         cb.addEventListener('change', function () {
@@ -515,6 +720,7 @@
           var memberId = cb.getAttribute('data-member-id');
           var nickname = cb.getAttribute('data-nickname');
           var realName = cb.getAttribute('data-real-name');
+          var display = cb.getAttribute('data-display') || (nickname + ' (' + realName + ')');
           var raw = cb.getAttribute('data-raw');
           var teamEl = cb.closest('.team');
           var ambBlock = cb.closest('.row.amb');
@@ -541,40 +747,13 @@
                 return;
               }
 
-              var matchedList = teamEl.querySelector('.matched-list');
-              var row = document.createElement('div');
-              row.className = 'row ok';
-              row.setAttribute('data-member-id', memberId);
-
-              var span = document.createElement('span');
-              span.textContent = '✅ ' + nickname + ' (' + realName + ')' + (raw ? ' · ' + raw : '');
-              row.appendChild(span);
-
-              cb.style.display = 'none';
-              row.appendChild(cb);
-              row.appendChild(makeExcludeButton(team, memberId, nickname + ' (' + realName + ')', function () {
-                row.remove();
-                bumpCount(teamEl, '.matched-count', -1);
-                fetch(UNCONFIRM_MATCH_URL, {
-                  method: 'POST',
-                  credentials: 'same-origin',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ team: team, member_id: memberId, raw: raw }),
-                }).catch(function () {});
-              }));
-
-              matchedList.appendChild(row);
-              bumpCount(teamEl, '.matched-count', 1);
-
-              var emptyEl = teamEl.querySelector('.matched-empty');
-              if (emptyEl) emptyEl.remove();
-
-              if (ambBlock) ambBlock.remove();
-              var ambLeft = bumpCount(teamEl, '.amb-count', -1);
-              if (ambLeft === 0) {
-                var ambSection = teamEl.querySelector('.amb-section');
-                if (ambSection) ambSection.remove();
-              }
+              // 체크박스가 들어있던 확인필요 블록은 곧 통째로 사라지므로, 새
+              // 행을 만들기 전에 체크박스를 먼저 떼서 남겨둔다 — 다만 이제는
+              // confirm-match가 미제출 목록에서도 바로 지워주므로 새로 만든
+              // 행에 체크박스를 다시 붙여둘 필요는 없다.
+              removeUnmatchedRow(teamEl, memberId);
+              addMatchedRow(teamEl, team, memberId, display, raw);
+              removeAmbBlockIfDone(teamEl, ambBlock);
             })
             .catch(function () {
               alert('네트워크 오류로 시트에 저장하지 못했습니다.');
@@ -586,6 +765,8 @@
             });
         });
       });
+
+      // ---------- 반영하기 ----------
 
       function buildSummary() {
         var html = '';

@@ -429,6 +429,16 @@ def has_any_review() -> bool:
     return bool(row)
 
 
+def get_max_review_date():
+    # 진행 시간 설정 표에서 "오늘"까지 다 보여주면 너무 길어지니까, 실제로
+    # 분석된(=하멈말이 진행된) 마지막 날짜까지만 보여주기 위해 쓴다.
+    row = _query(
+        "SELECT to_char(MAX(check_date), 'YYYY-MM-DD') AS d FROM hamummal_reviews",
+        fetch="one",
+    )
+    return (row or {}).get("d")
+
+
 def list_review_dates() -> list:
     # 한 번의 업로드로 여러 날짜가 한꺼번에 생길 수 있어서, 날짜별로 가장 최근
     # 업로드 1건씩만 추려서 보여준다 (같은 날짜를 다시 업로드했으면 최신 것으로 교체).
