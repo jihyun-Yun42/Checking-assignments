@@ -11,11 +11,12 @@ def compute_team_entry(
     업로드 시점(compute_review)뿐 아니라, 업로드 당시엔 조장/부조장이 아직 이
     웹앱에 가입 전이라 통째로 빠졌던 조를, 나중에 그 조장/부조장이 가입한 뒤
     조원이 결과확인 페이지를 열어볼 때 그 자리에서(lazily) 계산할 때도 쓴다 —
-    submitters/all_submitters는 그 날짜 업로드 시점에 이미 뽑아서 DB에 저장해둔
-    chat_senders/all_chat_senders를 그대로 넘기면 되므로, 카카오톡 원본 파일이
-    없어도(업로드 요청이 끝나면 바로 지워버리므로) 다시 계산할 수 있다. 다만 그
-    경우엔 메시지별 정확한 전송시각(submission_times)까지는 남아있지 않아서
-    "_submitted_at"은 빈 채로 나간다.
+    submitters/all_submitters/submission_times는 그 날짜 업로드 시점에 이미
+    뽑아서 DB에 저장해둔 chat_senders/all_chat_senders/submission_times를 그대로
+    넘기면 되므로, 카카오톡 원본 파일이 없어도(업로드 요청이 끝나면 바로
+    지워버리므로) 다시 계산할 수 있다. submission_times는 {카카오 발신자 이름:
+    "HH:MM"} 형태의 이미 포맷된 문자열 딕셔너리를 받는다(호출하는 쪽에서 미리
+    포맷해서 넘긴다 — DB에 저장할 때도 이 형태 그대로 저장한다).
 
     조장/부조장이 단 한 명도 이 웹앱에 가입한 적 없으면(members 안에 역할·
     번호를 가진 사람이 아예 없으면) None을 돌려준다 — 이건 이 함수가 뭘 어떻게
@@ -69,9 +70,9 @@ def compute_team_entry(
     submission_times = submission_times or {}
     for m in match["matched"]:
         raw = m.get("_matched_raw")
-        ts = submission_times.get(raw)
-        if ts:
-            m["_submitted_at"] = hamummal_parser.format_submission_time(ts)
+        formatted = submission_times.get(raw)
+        if formatted:
+            m["_submitted_at"] = formatted
     match["error"] = None
     match["_phone"] = login_phone
     return match
@@ -80,8 +81,14 @@ def compute_team_entry(
 def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
     # "제출자 목록에 몇 시에 제출했는지" 표시용 — 판정(제출했는지 자체)에는
-    # 영향 없고 화면에 보여줄 시각만 따로 뽑는다.
-    submission_times = hamummal_parser.extract_submission_times(txt_path, window_start, window_end)
+    # 영향 없고 화면에 보여줄 시각만 따로 뽑는다. 지금 당장 매칭되는 조뿐 아니라
+    # 나중에 조장/부조장이 새로 가입해서 다시 매칭할 조를 위해서도 그대로
+    # DB에 저장해둘 거라, 여기서 바로 "HH:MM" 문자열로 포맷해서 들고 있는다
+    # (원본 카톡 파일은 업로드 요청이 끝나면 지워지므로, 나중엔 이 값만 남는다).
+    submission_times = {
+        sender: hamummal_parser.format_submission_time(ts)
+        for sender, ts in hamummal_parser.extract_submission_times(txt_path, window_start, window_end).items()
+    }
     # "이름 고치기" 팝업 검색용 — 날짜/시간 상관없이 파일 전체에서 제출한 적
     # 있는 모든 사람. 매칭 판정에는 안 쓰고(그건 위 submitters만 씀), 검색
     # 목록을 넓혀주기 위해서만 쓴다.
@@ -98,6 +105,7 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
         "submitter_count": len(submitters),
         "chat_senders": sorted(submitters),
         "all_chat_senders": sorted(all_submitters),
+        "submission_times": submission_times,
     }
 
 

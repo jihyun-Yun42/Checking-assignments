@@ -337,6 +337,7 @@ def hamummal_upload():
                     submitter_count=computed["submitter_count"],
                     chat_senders=computed["chat_senders"],
                     all_chat_senders=computed["all_chat_senders"],
+                    submission_times=computed["submission_times"],
                 )
                 processed.append(date_str)
         finally:
@@ -690,14 +691,16 @@ def hamummal_review(review_id):
     full_review = data["review"]
     if my_team not in full_review:
         # 업로드 당시엔 우리 조 조장/부조장이 아직 이 웹앱에 가입 전이라서
-        # 통째로 빠졌을 수 있다 — 그 날짜 제출자 목록 자체는 이미 DB에 저장돼
-        # 있으니(chat_senders/all_chat_senders), 지금 시점 기준으로 우리 조
-        # 현황판과 다시 매칭해본다. 조장/부조장이 그 사이에 가입했다면 바로
-        # 결과가 나오고, 다음부터는 저장해둬서 다시 계산할 필요가 없다.
+        # 통째로 빠졌을 수 있다 — 그 날짜 제출자 목록과 제출시각 자체는 이미
+        # DB에 저장돼 있으니(chat_senders/all_chat_senders/submission_times),
+        # 지금 시점 기준으로 우리 조 현황판과 다시 매칭해본다. 조장/부조장이
+        # 그 사이에 가입했다면 바로 결과가 나오고(제출시각까지 포함해서), 다음
+        # 부터는 저장해둬서 다시 계산할 필요가 없다.
         members = db_client.active_members_by_team().get(my_team) or []
         live_entry = hamummal_dashboard.compute_team_entry(
             my_team, members, data["check_date"],
             data.get("chat_senders") or [], data.get("all_chat_senders") or [],
+            data.get("submission_times") or {},
         )
         if live_entry is None:
             return (
