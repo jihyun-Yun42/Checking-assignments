@@ -503,13 +503,17 @@ def update_review_team_entry(review_id: str, team: str, entry: dict) -> None:
     )
 
 
-def mark_review_team_applied(review_id: str, team: str, apply_results: dict) -> None:
+def mark_review_team_applied(review_id: str, team: str, apply_results: dict, matched_ids=None) -> None:
     # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
     # 검토 전체가 아니라 조 단위로 기록한다. jsonb 병합 연산자(||)로
     # applied_teams 안의 해당 조 키만 갱신한다.
+    # matched_ids: 이번에 반영한 시점의 제출자 id 스냅샷. 나중에 다시
+    # "반영하기"를 누르면(이름 고치기/미제출 전환 등으로 바뀐 뒤) 이 스냅샷과
+    # 비교해서 달라진 사람만 다시 소리튠에 반영한다.
     payload = {
         "applied_at": now_kst().isoformat(timespec="seconds"),
         "apply_results": apply_results,
+        "matched_ids": [str(x) for x in (matched_ids or [])],
     }
     _query(
         '''

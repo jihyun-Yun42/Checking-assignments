@@ -123,8 +123,8 @@
   {% endif %}
 
   {% if applied %}
-    <p class="applied">✅ 이 검토는 {{ applied_at }} 반영됐어요. 지금부터 아래에서 고치는 내용(이름 고치기, 미제출/제출 변경, 확인필요 체크)은
-    바로 소리튠 조장페이지에도 같이 반영돼요.</p>
+    <p class="applied">✅ {{ applied_at }} 기준 반영됐어요.<br>
+    제출/미제출 변경 시 X표시나 체크(✓)표시를 누른 후 반영하기 버튼을 눌러주세요.</p>
   {% endif %}
 
   <form method="post" action="{{ url_for('hamummal_review_apply', review_id=review_id) }}" id="review-form">
@@ -198,9 +198,9 @@
   {% endfor %}
 
     <div class="toolbar">
-      <button type="submit"{{ '' if (apply_enabled and not applied) else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
+      <button type="submit"{{ '' if apply_enabled else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
       {% if applied %}
-        <p class="test-note">처음 반영은 이미 끝났어요. 위에서 하나씩 고치면 그때그때 바로 반영돼요.</p>
+        <p class="test-note">반영 이후 바뀐 내용이 있으면 이 버튼을 다시 눌러서 반영해주세요.</p>
       {% elif not apply_enabled %}
         <p class="test-note">지금은 반영 기능이 꺼져 있어요.</p>
       {% endif %}
@@ -267,6 +267,8 @@
       var TOGGLE_SUBMISSION_URL = {{ url_for('hamummal_review_toggle_submission', review_id=review_id) | tojson }};
       var CHAT_SENDERS = {{ chat_senders | tojson }};
       var MATCHED_RAW_NAMES = {{ matched_raw_names | tojson }};
+      var APPLIED = {{ applied | tojson }};
+      var APPLIED_MATCHED_IDS = {{ applied_matched_ids | tojson }};
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -366,8 +368,7 @@
               }
               row.remove();
               bumpCount(teamEl, '.matched-count', -1);
-              addUnmatchedRow(teamEl, team, memberId, nickname, realName, display);
-              if (data.sync_error) showInfoModal(display + '\n\n' + data.sync_error);
+              addUnmatchedRow(teamEl, team, memberId, nickname, realName, display, data.known_raw);
             })
             .catch(function () {
               showInfoModal('네트워크 오류로 저장하지 못했습니다.');
@@ -535,7 +536,6 @@
             }
             removeUnmatchedRow(teamEl, memberId);
             addMatchedRow(teamEl, team, memberId, display, null);
-            if (data.sync_error) showInfoModal(display + '\n\n' + data.sync_error);
           })
           .catch(function () {
             showInfoModal('네트워크 오류로 저장하지 못했습니다.');
@@ -876,27 +876,85 @@
 
       // ---------- 반영하기 ----------
 
-      function buildSummary() {
-        var html = '';
-        var total = 0;
-        document.querySelectorAll('.team').forEach(function (teamEl) {
-          var teamName = teamEl.getAttribute('data-team');
-          var names = [];
-          teamEl.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
-            var span = row.querySelector('span');
-            var text = span ? span.textContent.replace('✅', '').trim() : '';
-            var parts = text.split(' · ');
-            names.push((parts.length > 1 ? parts[1] : parts[0]).trim());
-          });
-          if (names.length === 0) return;
-          total += names.length;
-          html += '<span class="team-name">' + escapeHtml(teamName) + ' (' + names.length + '명)</span>';
-          html += '<div class="name-chips">' + names.map(function (n) {
-            return '<span class="name-chip">' + escapeHtml(n) + '</span>';
-          }).join('') + '</div>';
+      // 마지막으로 반영했을 때의 제출자 id 스냅샷(서버가 내려줌). 반영 이후에
+      // 이름 고치기/미제출 전환 등으로 바뀐 사람만 "재반영" 확인 팝업에 보여주기
+      // 위해, 지금 화면 상태와 이 스냅샷을 비교한다.
+      var appliedMatchedSet = {};
+      APPLIED_MATCHED_IDS.forEach(function (id) { appliedMatchedSet[String(id)] = true; });
+
+      function currentMatchedMap() {
+        var map = {};
+        document.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
+          var id = row.getAttribute('data-member-id');
+          var span = row.querySelector('span');
+          var text = span ? span.textContent.replace('✅', '').trim() : '';
+          var parts = text.split(' · ');
+          map[id] = (parts.length > 1 ? parts[1] : parts[0]).trim();
         });
-        if (total === 0) {
-          html = '반영될 인원이 없습니다.';
+        return map;
+      }
+
+      function unmatchedDisplayFor(id) {
+        var row = document.querySelector('.unmatched-list .row.miss[data-member-id="' + id + '"]');
+        if (!row) return '#' + id;
+        var trigger = row.querySelector('.fixname-trigger');
+        var text = trigger && trigger.childNodes[0] ? trigger.childNodes[0].textContent : '';
+        return text.trim() || ('#' + id);
+      }
+
+      function computeApplyDelta() {
+        var current = currentMatchedMap();
+        var added = [];
+        var removed = [];
+        Object.keys(current).forEach(function (id) {
+          if (!appliedMatchedSet[id]) added.push({ id: id, display: current[id] });
+        });
+        Object.keys(appliedMatchedSet).forEach(function (id) {
+          if (!current[id]) removed.push({ id: id, display: unmatchedDisplayFor(id) });
+        });
+        return { added: added, removed: removed };
+      }
+
+      function buildSummary() {
+        if (!APPLIED) {
+          var html = '';
+          var total = 0;
+          document.querySelectorAll('.team').forEach(function (teamEl) {
+            var teamName = teamEl.getAttribute('data-team');
+            var names = [];
+            teamEl.querySelectorAll('.matched-list .row.ok').forEach(function (row) {
+              var span = row.querySelector('span');
+              var text = span ? span.textContent.replace('✅', '').trim() : '';
+              var parts = text.split(' · ');
+              names.push((parts.length > 1 ? parts[1] : parts[0]).trim());
+            });
+            if (names.length === 0) return;
+            total += names.length;
+            html += '<span class="team-name">' + escapeHtml(teamName) + ' (' + names.length + '명)</span>';
+            html += '<div class="name-chips">' + names.map(function (n) {
+              return '<span class="name-chip">' + escapeHtml(n) + '</span>';
+            }).join('') + '</div>';
+          });
+          if (total === 0) html = '반영될 인원이 없습니다.';
+          return html;
+        }
+
+        var delta = computeApplyDelta();
+        if (delta.added.length === 0 && delta.removed.length === 0) {
+          return '마지막 반영 이후로 바뀐 내용이 없어요.';
+        }
+        var html = '';
+        if (delta.added.length) {
+          html += '<span class="team-name">새로 반영될 사람 (' + delta.added.length + '명)</span>';
+          html += '<div class="name-chips">' + delta.added.map(function (p) {
+            return '<span class="name-chip">' + escapeHtml(p.display) + '</span>';
+          }).join('') + '</div>';
+        }
+        if (delta.removed.length) {
+          html += '<span class="team-name">반영 취소될 사람 (' + delta.removed.length + '명)</span>';
+          html += '<div class="name-chips">' + delta.removed.map(function (p) {
+            return '<span class="name-chip">' + escapeHtml(p.display) + '</span>';
+          }).join('') + '</div>';
         }
         return html;
       }
@@ -904,6 +962,13 @@
       form.addEventListener('submit', function (e) {
         if (submitBtn.disabled) return;
         e.preventDefault();
+        if (APPLIED) {
+          var delta = computeApplyDelta();
+          if (delta.added.length === 0 && delta.removed.length === 0) {
+            showInfoModal('마지막 반영 이후로 바뀐 내용이 없어요.');
+            return;
+          }
+        }
         listEl.innerHTML = buildSummary();
         modal.hidden = false;
       });

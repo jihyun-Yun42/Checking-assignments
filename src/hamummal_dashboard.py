@@ -68,12 +68,20 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
     }
 
 
-def apply_review(review: dict, check_date_str: str) -> dict:
+def apply_review(review: dict, check_date_str: str, remove_ids_by_team: dict = None) -> dict:
+    """
+    matched로 잡힌 사람은 status=True로 체크하고, remove_ids_by_team에 담긴
+    사람(전에는 반영됐는데 지금은 "미제출"로 바뀐 사람)은 status=False로 체크를
+    해제한다. 재반영(이미 반영한 뒤 다시 반영) 때는 matched 전체를 다시 True로
+    보내는 게 멱등적이라 안전하고, 빠진 사람만 remove_ids로 따로 False를 보낸다.
+    """
+    remove_ids_by_team = remove_ids_by_team or {}
     results = {}
     for team, data in review.items():
         matched = data.get("matched") or []
+        remove_ids = {str(x) for x in (remove_ids_by_team.get(team) or set())}
         phone = data.get("_phone")
-        if not matched:
+        if not matched and not remove_ids:
             results[team] = "제출자 없음 (변경사항 없음)"
             continue
         if not phone:
@@ -89,9 +97,22 @@ def apply_review(review: dict, check_date_str: str) -> dict:
                     "status": True,
                 }
                 for m in matched
+            ] + [
+                {
+                    "member_id": mid,
+                    "mission_type_code": "hamemmal",
+                    "check_date": check_date_str,
+                    "status": False,
+                }
+                for mid in remove_ids
             ]
             leader_dashboard_client.save_checks(session, items, check_date=check_date_str)
-            results[team] = f"{len(items)}명 체크 완료"
+            parts = []
+            if matched:
+                parts.append(f"{len(matched)}명 체크")
+            if remove_ids:
+                parts.append(f"{len(remove_ids)}명 체크 해제")
+            results[team] = (", ".join(parts) + " 완료") if parts else "변경사항 없음"
         except Exception as e:
             results[team] = f"저장 실패: {e}"
     return results
