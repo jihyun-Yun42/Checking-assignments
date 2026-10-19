@@ -24,9 +24,10 @@
   .row.ok > span:first-child, .row.miss > span:first-child{flex:1 1 auto;min-width:0}
   .attn-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;
        font-size:11px;font-weight:bold;vertical-align:middle}
-  .attn-badge.low{background:#fbe9e7;color:#c0392b}
-  .attn-badge.mid{background:#fcf1d8;color:#8a6100}
-  .attn-badge.high{background:#e6f4ea;color:#0a7a2f}
+  .attn-badge.t-gray{background:#e0e0e0;color:#424242}
+  .attn-badge.t-yellow{background:#fff3cd;color:#8a6100}
+  .attn-badge.t-lgreen{background:#dcf0d8;color:#2e7d32}
+  .attn-badge.t-dgreen{background:#0a7a2f;color:#fff}
   .err{color:#c0392b;font-weight:bold}
 
   .amb-card{border:1px solid #f0d9a0;background:#fffaf0;border-radius:10px;
@@ -145,7 +146,7 @@
         {% for m in data.matched %}
           {% set attn_rate = attendance_by_id.get(m.id | string) %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m | hname }}{% if attn_rate is not none %} <span class="attn-badge {{ 'low' if attn_rate < 50 else ('mid' if attn_rate < 80 else 'high') }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
+            <span>✅ {{ m | hname }}{% if attn_rate is not none %} <span class="attn-badge {{ 't-gray' if attn_rate < 50 else ('t-yellow' if attn_rate < 80 else ('t-lgreen' if attn_rate < 100 else 't-dgreen')) }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
             <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
               data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
               title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
@@ -191,7 +192,7 @@
             <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
               data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
               title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
-              {% if attn_rate is not none %}<span class="attn-badge {{ 'low' if attn_rate < 50 else ('mid' if attn_rate < 80 else 'high') }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}
+              {% if attn_rate is not none %}<span class="attn-badge {{ 't-gray' if attn_rate < 50 else ('t-yellow' if attn_rate < 80 else ('t-lgreen' if attn_rate < 100 else 't-dgreen')) }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}
               {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
             <span class="row-actions">
               <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"

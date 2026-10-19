@@ -358,46 +358,40 @@ def _team_attendance(team: str):
     """
     팀의 지금까지 분석된 날짜들을 기준으로, 지금 조원 명단(가장 최근 날짜
     기준)에 있는 사람별 출석율을 계산한다. "출석"은 그 날짜에 제출자(matched)로
-    잡혔는지를 기준으로 하고, 분모는 그 조원이 실제로 명단에 있었던 날짜
-    수만 센다 — 중간에 들어온 조원이 들어오기 전 날짜까지 미제출로 깎이지
-    않도록.
+    잡혔는지를 기준으로 하고, 분모는 분석된 날짜 수 전체다(조원은 중간에
+    들어오는 일이 없으므로 다들 같은 분모를 쓴다).
     """
     rows = db_client.list_team_reviews(team)
-    rows = [r for r in rows if not ((r.get("review") or {}).get("error"))]
+    rows = [r for r in rows if not ((r.get("review") or {}).get(team) or {}).get("error")]
+    total_dates = len(rows)
 
     stats = {}
     for row in rows:
-        entry = row.get("review") or {}
-        matched_today = set()
+        entry = (row.get("review") or {}).get(team) or {}
         for m in entry.get("matched") or []:
             mid = str(m.get("id"))
-            matched_today.add(mid)
-            st = stats.setdefault(mid, {"total": 0, "matched": 0, "member": m})
-            st["total"] += 1
+            st = stats.setdefault(mid, {"matched": 0, "member": m})
             st["matched"] += 1
             st["member"] = m
         for m in entry.get("unmatched_members") or []:
             mid = str(m.get("id"))
-            if mid in matched_today:
-                continue
-            st = stats.setdefault(mid, {"total": 0, "matched": 0, "member": m})
-            st["total"] += 1
+            st = stats.setdefault(mid, {"matched": 0, "member": m})
             st["member"] = m
 
-    latest_entry = (rows[-1].get("review") or {}) if rows else {}
+    latest_entry = ((rows[-1].get("review") or {}).get(team) or {}) if rows else {}
     latest_ids = {str(m.get("id")) for m in (latest_entry.get("matched") or [])} | \
         {str(m.get("id")) for m in (latest_entry.get("unmatched_members") or [])}
 
     people = []
     for mid in latest_ids:
         st = stats.get(mid)
-        if not st or not st["total"]:
+        if not st or not total_dates:
             continue
-        rate = round(st["matched"] / st["total"] * 100)
-        people.append({"member": st["member"], "total": st["total"], "matched": st["matched"], "rate": rate})
+        rate = round(st["matched"] / total_dates * 100)
+        people.append({"member": st["member"], "total": total_dates, "matched": st["matched"], "rate": rate})
     people.sort(key=lambda p: (p["rate"], p["member"].get("real_name") or ""))
 
-    return people, len(rows)
+    return people, total_dates
 
 
 @app.route("/hamummal-review/attendance")
@@ -514,7 +508,7 @@ def hamummal_review(review_id):
 
     data = db_client.load_review(review_id)
     if not data:
-        return "존재하지 않거나 만료된 검토입니다. 다시 업로드해주세요.", 404
+        return "존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요.", 404
 
     full_review = data["review"]
     if my_team not in full_review:
@@ -939,7 +933,15 @@ def hamummal_review_toggle_submission(review_id):
             m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
         ]
         target = dict(target)
-        target.pop("_matched_raw", None)
+        # "매칭"은 제출/미제출을 왔다갔다 해도 계속 유지돼야 한다 — 전에 알고
+        # 있던 카카오 이름(_known_raw)이 있으면 그걸 오늘의 매칭 이름
+        # (_matched_raw)으로 그대로 가져와서, 다시 제출자로 옮겨도 "매칭이
+        # 풀린" 것처럼 보이거나 같은 raw를 두고 확인 필요가 다시 뜨지 않게 한다.
+        known_raw_existing = target.pop("_known_raw", None)
+        if known_raw_existing:
+            target["_matched_raw"] = known_raw_existing
+        else:
+            target.pop("_matched_raw", None)
         matched_ids = {str(x.get("id")) for x in (entry.get("matched") or [])}
         if str(member_id) not in matched_ids:
             entry.setdefault("matched", []).append(target)
@@ -965,7 +967,7 @@ def hamummal_review_apply(review_id):
 
     data = db_client.load_review(review_id)
     if not data:
-        return "존재하지 않거나 만료된 검토입니다. 다시 업로드해주세요.", 404
+        return "존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요.", 404
 
     full_review = data["review"]
     if my_team not in full_review:
@@ -1002,7 +1004,8 @@ def hamummal_review_apply(review_id):
         removed_ids = current_unmatched_ids
 
     apply_results = hamummal_dashboard.apply_review(
-        {team: entry}, check_date_str, remove_ids_by_team={team: removed_ids},
+        {team: entry}, check_date_str,
+        add_ids_by_team={team: added_ids}, remove_ids_by_team={team: removed_ids},
     )
     db_client.mark_review_team_applied(review_id, team, apply_results, matched_ids=sorted(current_matched_ids))
 

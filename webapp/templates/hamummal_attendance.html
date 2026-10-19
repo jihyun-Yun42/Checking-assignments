@@ -34,9 +34,7 @@
 <body>
   <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>📊 하멈말 출석율 — {{ team }}</h1>
-  <p class="meta">분석된 날짜 {{ total_dates }}개를 기준으로 계산했어요.
-    각 조원은 본인이 조원 명단에 있었던 날짜 중에서 제출한 비율이에요
-    (중간에 들어온 조원은 들어오기 전 날짜까지 미제출로 깎이지 않아요).</p>
+  <p class="meta">분석된 날짜 {{ total_dates }}개를 기준으로, 그중 제출한 날짜의 비율이에요.</p>
   {% if people %}
     {% for p in people %}
       {% set rate = p.rate %}
@@ -51,7 +49,7 @@
       </div>
     {% endfor %}
   {% else %}
-    <p class="empty">아직 출석율을 계산할 데이터가 없어요. 먼저 하멈말 파일을 업로드해주세요.</p>
+    <p class="empty">아직 출석율을 계산할 데이터가 없어요.</p>
   {% endif %}
 </body>
 </html>
