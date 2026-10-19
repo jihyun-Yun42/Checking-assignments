@@ -18,8 +18,10 @@
   .team{border:1px solid #e2e2e2;border-radius:12px;padding:14px 16px;margin-bottom:16px}
   .team h2{font-size:16px;margin:0 0 8px}
   .row{font-size:14px;padding:3px 0}
-  .row.ok, .row.miss{color:#0a7a2f;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .row.ok, .row.miss{display:flex;align-items:center;gap:10px}
+  .row.ok{color:#0a7a2f}
   .row.miss{color:#888}
+  .row.ok > span:first-child, .row.miss > span:first-child{flex:1 1 auto;min-width:0}
   .err{color:#c0392b;font-weight:bold}
 
   .amb-card{border:1px solid #f0d9a0;background:#fffaf0;border-radius:10px;
@@ -41,19 +43,22 @@
         padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px}
   .test-note{font-size:13px;color:#888;text-align:center;margin-top:8px}
 
-  .exclude-btn{flex-shrink:0;border:none;background:none;color:#bbb;
-       font-size:15px;line-height:1;font-weight:bold;padding:2px 4px;
+  .exclude-btn{flex-shrink:0;border:none;border-left:1px solid #eee;background:none;color:#bbb;
+       font-size:16px;line-height:1;font-weight:bold;padding:4px 2px 4px 12px;
        cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
        justify-content:center}
   .exclude-btn:hover{color:#c0392b}
+  .exclude-btn:disabled{color:#ddd;cursor:default}
 
   .mark-submitted-btn{flex-shrink:0;border:none;background:none;color:#bbb;
-       font-size:15px;line-height:1;font-weight:bold;padding:2px 4px;
+       font-size:16px;line-height:1;font-weight:bold;padding:4px 2px;
        cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
        justify-content:center}
   .mark-submitted-btn:hover{color:#0a7a2f}
+  .mark-submitted-btn:disabled{color:#ddd;cursor:default}
 
-  .row-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+  .row-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;
+       border-left:1px solid #eee;padding-left:10px}
 
   .fixname-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;
        text-decoration-color:#ccc}
@@ -118,8 +123,8 @@
   {% endif %}
 
   {% if applied %}
-    <p class="applied">✅ 이 검토는 {{ applied_at }} 반영 완료됐어요. 아래 체크 상태는 그때 기준이고, 지금 다시 체크해도 저장되지 않아요.
-    추가로 반영할 게 있으면 새로 업로드해서 검토해주세요.</p>
+    <p class="applied">✅ 이 검토는 {{ applied_at }} 반영됐어요. 지금부터 아래에서 고치는 내용(이름 고치기, 미제출/제출 변경, 확인필요 체크)은
+    바로 소리튠 조장페이지에도 같이 반영돼요.</p>
   {% endif %}
 
   <form method="post" action="{{ url_for('hamummal_review_apply', review_id=review_id) }}" id="review-form">
@@ -134,12 +139,10 @@
       <div class="matched-list">
         {% for m in data.matched %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} {% if not applied %}<span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% else %}<span class="matched-raw">· {{ m.get('_matched_raw') }}</span>{% endif %}{% endif %}</span>
-            {% if not applied %}
-              <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-                title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
-            {% endif %}
+            <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
+            <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
+              data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
+              title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
           </div>
         {% endfor %}
       </div>
@@ -154,7 +157,7 @@
               {% for c in amb.candidates %}
                 <div class="amb-candidate-row">
                   <label class="cand">
-                    <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"{{ ' disabled' if applied else '' }}
+                    <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"
                       class="amb-checkbox"
                       data-team="{{ team }}" data-member-id="{{ c.id }}"
                       data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
@@ -162,11 +165,9 @@
                       data-raw="{{ amb.raw }}">
                     <strong>{{ c | hname }}</strong> 님이 보낸 메시지가 맞아요
                   </label>
-                  {% if not applied %}
-                    <span class="amb-manual-trigger fixname-trigger" role="button" tabindex="0"
-                      data-mode="ambiguous" data-team="{{ team }}" data-member-id="{{ c.id }}"
-                      data-nickname="" data-real-name="" data-display="{{ c | hname }}">선택지에 없어요 · 직접 입력할게요</span>
-                  {% endif %}
+                  <span class="amb-manual-trigger fixname-trigger" role="button" tabindex="0"
+                    data-mode="ambiguous" data-team="{{ team }}" data-member-id="{{ c.id }}"
+                    data-nickname="" data-real-name="" data-display="{{ c | hname }}">선택지에 없어요 · 직접 입력할게요</span>
                 </div>
               {% endfor %}
             </div>
@@ -180,19 +181,15 @@
           {% set override_name = display_name_overrides.get(m.id | string) %}
           {% set known_hint = override_name or m.get('_known_raw') %}
           <div class="row miss" data-member-id="{{ m.id }}">
-            {% if not applied %}
-              <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
+            <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
+              data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
+              title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
+              {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
+            <span class="row-actions">
+              <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
                 data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-                title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
-                {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
-              <span class="row-actions">
-                <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                  data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-                  title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
-              </span>
-            {% else %}
-              <span>{{ m | hname }}</span>
-            {% endif %}
+                title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
+            </span>
           </div>
         {% endfor %}
       </div>
@@ -203,7 +200,7 @@
     <div class="toolbar">
       <button type="submit"{{ '' if (apply_enabled and not applied) else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
       {% if applied %}
-        <p class="test-note">이미 반영된 검토라 버튼이 비활성화되어 있어요.</p>
+        <p class="test-note">처음 반영은 이미 끝났어요. 위에서 하나씩 고치면 그때그때 바로 반영돼요.</p>
       {% elif not apply_enabled %}
         <p class="test-note">지금은 반영 기능이 꺼져 있어요.</p>
       {% endif %}
@@ -267,6 +264,7 @@
       var CONFIRM_MATCH_URL = {{ url_for('hamummal_review_confirm_match', review_id=review_id) | tojson }};
       var UNCONFIRM_MATCH_URL = {{ url_for('hamummal_review_unconfirm_match', review_id=review_id) | tojson }};
       var FIX_NAME_URL = {{ url_for('hamummal_review_fix_name', review_id=review_id) | tojson }};
+      var TOGGLE_SUBMISSION_URL = {{ url_for('hamummal_review_toggle_submission', review_id=review_id) | tojson }};
       var CHAT_SENDERS = {{ chat_senders | tojson }};
       var MATCHED_RAW_NAMES = {{ matched_raw_names | tojson }};
       var form = document.getElementById('review-form');
@@ -319,24 +317,6 @@
         return next;
       }
 
-      function addHiddenExcludeField(team, memberId) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'exclude__' + team + '__' + memberId;
-        input.value = '1';
-        form.appendChild(input);
-        return input;
-      }
-
-      function addHiddenExtraField(team, memberId) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'extra__' + team + '__' + memberId;
-        input.value = '1';
-        form.appendChild(input);
-        return input;
-      }
-
       // ---------- 제출 안 함으로 변경(미제출로 이동) 확인 팝업 ----------
       // confirm() 팝업은 쓰지 않고 우리가 만든 모달로 대체한다. "우리 조원
       // 아님"이 아니라 "실제로 제출하지 않았다"는 뜻으로 바꾸고, 지우기만
@@ -368,22 +348,31 @@
         if (e.target === excludeModal) closeExcludeModal();
       });
 
-      // 조원 하나에 대해 전에 심어둔 extra__/exclude__ 히든필드가 있으면
-      // 지운다 (제출함 ↔ 제출 안 함을 왔다갔다 해도 반영 시점에 상태가
-      // 겹치지 않게).
-      function clearMemberHiddenFields(team, memberId) {
-        form.querySelectorAll(
-          'input[name="extra__' + team + '__' + memberId + '"], input[name="exclude__' + team + '__' + memberId + '"]'
-        ).forEach(function (el) { el.remove(); });
-      }
-
       function excludeMatchedMember(team, memberId, display, nickname, realName, row, teamEl) {
         openExcludeModal(display, function () {
-          row.remove();
-          bumpCount(teamEl, '.matched-count', -1);
-          clearMemberHiddenFields(team, memberId);
-          addHiddenExcludeField(team, memberId);
-          addUnmatchedRow(teamEl, team, memberId, nickname, realName, display);
+          row.style.opacity = '.5';
+          fetch(TOGGLE_SUBMISSION_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ team: team, member_id: memberId, direction: 'exclude' }),
+          })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              if (!data.ok) {
+                showInfoModal(data.error || '저장하지 못했습니다.');
+                row.style.opacity = '';
+                return;
+              }
+              row.remove();
+              bumpCount(teamEl, '.matched-count', -1);
+              addUnmatchedRow(teamEl, team, memberId, nickname, realName, display);
+              if (data.sync_error) showInfoModal(display + '\n\n' + data.sync_error);
+            })
+            .catch(function () {
+              showInfoModal('네트워크 오류로 저장하지 못했습니다.');
+              row.style.opacity = '';
+            });
         });
       }
 
@@ -522,17 +511,36 @@
       function moveUnmatchedToMatched(btn) {
         var team = btn.getAttribute('data-team');
         var memberId = btn.getAttribute('data-member-id');
+        var nickname = btn.getAttribute('data-nickname') || '';
+        var realName = btn.getAttribute('data-real-name') || '';
         var display = btn.getAttribute('data-display') ||
-          (btn.getAttribute('data-nickname') + ' (' + btn.getAttribute('data-real-name') + ')');
+          (nickname + ' (' + realName + ')');
         var teamEl = btn.closest('.team');
 
-        removeUnmatchedRow(teamEl, memberId);
-        var row = addMatchedRow(teamEl, team, memberId, display, null);
-        // "사실 제출했어요"는 소리튠에 아직 없는 메시지를 수동으로 체크하는
-        // 거라, extra__ 히든필드를 반영 폼에 심어둬야 한다 (확인필요 체크박스와
-        // 같은 방식). 행을 통째로 지우면 필드도 같이 사라지게 행의 자식으로 넣는다.
-        var extraInput = addHiddenExtraField(team, memberId);
-        row.appendChild(extraInput);
+        btn.disabled = true;
+        fetch(TOGGLE_SUBMISSION_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            team: team, member_id: memberId, direction: 'include', nickname: nickname, real_name: realName,
+          }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              showInfoModal(data.error || '저장하지 못했습니다.');
+              btn.disabled = false;
+              return;
+            }
+            removeUnmatchedRow(teamEl, memberId);
+            addMatchedRow(teamEl, team, memberId, display, null);
+            if (data.sync_error) showInfoModal(display + '\n\n' + data.sync_error);
+          })
+          .catch(function () {
+            showInfoModal('네트워크 오류로 저장하지 못했습니다.');
+            btn.disabled = false;
+          });
       }
 
       function wireMarkSubmittedButtons() {

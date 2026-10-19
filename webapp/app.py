@@ -371,32 +371,14 @@ def hamummal_review(review_id):
     entry = full_review[my_team]
 
     # 안전장치: 어떤 경로로든 같은 조원이 제출자/미제출자 양쪽에 동시에 들어가
+    # 있거나, 이미 확정된 사람(raw)과 같은 메시지를 놓고 "확인 필요"가 남아
     # 있으면(정상이라면 있을 수 없지만, 과거 수정 과정에서 생긴 데이터가 남아있을
-    # 수 있음) 제출자 쪽을 우선해서 미제출 목록에서 빼주고, 그 상태로 저장해서
-    # 다음부터는 다시 안 보이게 한다.
-    _matched_ids_now = {str(x.get("id")) for x in (entry.get("matched") or [])}
-    _clean_unmatched = [
-        x for x in (entry.get("unmatched_members") or []) if str(x.get("id")) not in _matched_ids_now
-    ]
-    if len(_clean_unmatched) != len(entry.get("unmatched_members") or []):
-        entry["unmatched_members"] = _clean_unmatched
+    # 수 있음) 정리해서 그 상태로 저장해두고, 다음부터는 다시 안 보이게 한다.
+    if _purge_resolved_ambiguous(entry):
         try:
             db_client.update_review_team_entry(review_id, my_team, entry)
         except Exception:
             pass  # 화면엔 바로 반영하고, 저장은 실패해도 다음에 다시 시도하면 됨
-
-    _clean_ambiguous = []
-    for _amb in entry.get("ambiguous") or []:
-        _kept = [c for c in _amb.get("candidates") or [] if str(c.get("id")) not in _matched_ids_now]
-        if _kept:
-            _amb["candidates"] = _kept
-            _clean_ambiguous.append(_amb)
-    if len(_clean_ambiguous) != len(entry.get("ambiguous") or []):
-        entry["ambiguous"] = _clean_ambiguous
-        try:
-            db_client.update_review_team_entry(review_id, my_team, entry)
-        except Exception:
-            pass
 
     team_applied = (data.get("applied_teams") or {}).get(my_team) or {}
     is_today = data["check_date"] == now_kst().date().isoformat()
@@ -434,6 +416,82 @@ def hamummal_review(review_id):
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
         is_today=is_today,
     )
+
+
+def _purge_resolved_ambiguous(entry: dict) -> bool:
+    """
+    카카오톡 원문 메시지(raw) 하나는 결국 한 사람만 보낸 거라서, 그 raw가 이미
+    누군가에게 확정 매칭됐으면 "이 raw, 혹시 이 사람 아니에요?"라고 묻는 다른
+    확인필요 카드는 더 이상 의미가 없다 — 지워야 새로고침해도 다시 안 뜬다.
+    (예: 닉네임이 겹치는 두 사람이 있을 때 한쪽을 확정해도, 같은 raw를 놓고
+    다른 쪽을 제안하는 카드가 예전엔 안 지워지고 남아있었다.)
+    같은 조원이 제출자/미제출자 양쪽에 동시에 들어있는 것도 같이 정리한다.
+    entry를 제자리에서 고치고, 뭔가 바뀌었으면 True를 돌려준다.
+    """
+    matched_ids = {str(x.get("id")) for x in (entry.get("matched") or [])}
+    matched_raws = {
+        m.get("_matched_raw") for m in (entry.get("matched") or []) if m.get("_matched_raw")
+    }
+    changed = False
+
+    clean_unmatched = [
+        m for m in (entry.get("unmatched_members") or []) if str(m.get("id")) not in matched_ids
+    ]
+    if len(clean_unmatched) != len(entry.get("unmatched_members") or []):
+        entry["unmatched_members"] = clean_unmatched
+        changed = True
+
+    clean_ambiguous = []
+    for amb in entry.get("ambiguous") or []:
+        if amb.get("raw") in matched_raws:
+            changed = True
+            continue  # 이 raw는 이미 다른 후보로 확정됐음 — 카드 전체를 치운다
+        candidates = amb.get("candidates") or []
+        kept = [c for c in candidates if str(c.get("id")) not in matched_ids]
+        if len(kept) != len(candidates):
+            changed = True
+        amb["candidates"] = kept
+        if kept:
+            clean_ambiguous.append(amb)
+    if changed:
+        entry["ambiguous"] = clean_ambiguous
+    elif len(clean_ambiguous) != len(entry.get("ambiguous") or []):
+        entry["ambiguous"] = clean_ambiguous
+        changed = True
+
+    return changed
+
+
+def _sync_if_applied(data: dict, team: str, member_id, status: bool):
+    """
+    이미 "반영하기"를 눌러서 소리튠 조장페이지에 체크가 올라간 뒤에 조원 한
+    명의 제출/미제출 상태가 바뀌면, 전체를 다시 반영할 필요 없이 그 한 명만
+    바로 소리튠에 다시 올린다. 아직 한 번도 반영 전이면 손댈 게 없으므로
+    (처음 반영할 때 한꺼번에 올라감) None을 돌려준다.
+    에러가 나도 목록(리뷰 데이터)은 이미 저장됐으니, 에러 메시지만 돌려주고
+    호출한 쪽에서 사용자에게 보여주게 한다.
+    """
+    if not (data.get("applied_teams") or {}).get(team):
+        return None
+    entry = (data.get("review") or {}).get(team) or {}
+    phone = entry.get("_phone")
+    if not phone:
+        return "이미 반영된 날짜인데 로그인 정보가 없어서 소리튠에 바로 반영하지 못했어요. 목록은 고쳐졌어요."
+    try:
+        session, _ = leader_dashboard_client.login(phone)
+        leader_dashboard_client.save_checks(
+            session,
+            [{
+                "member_id": member_id,
+                "mission_type_code": "hamemmal",
+                "check_date": data["check_date"],
+                "status": status,
+            }],
+            check_date=data["check_date"],
+        )
+        return None
+    except Exception as e:
+        return f"목록은 고쳤는데 소리튠에 바로 반영하지는 못했어요: {e}"
 
 
 def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
@@ -489,6 +547,7 @@ def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
         if str(member_id) not in row_matched_ids:
             row_target["_matched_raw"] = row_matched_raw
             row_entry.setdefault("matched", []).append(row_target)
+        _purge_resolved_ambiguous(row_entry)
 
         try:
             db_client.update_review_team_entry(row["id"], team, row_entry)
@@ -547,14 +606,16 @@ def hamummal_review_confirm_match(review_id):
             matched_ids = {str(x.get("id")) for x in (entry.get("matched") or [])}
             if str(member_id) not in matched_ids:
                 entry.setdefault("matched", []).append(target)
+            _purge_resolved_ambiguous(entry)
             try:
                 db_client.update_review_team_entry(review_id, team, entry)
             except Exception:
                 pass  # confirmed_matches 저장은 이미 끝났으니 여기서 실패해도 치명적이진 않음
 
+    sync_error = _sync_if_applied(data, team, member_id, True)
     fixed_dates = _retroactively_apply_other_dates(review_id, team, member_id, raw)
 
-    return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
+    return jsonify(ok=True, fixed_dates=sorted(fixed_dates), sync_error=sync_error)
 
 
 @app.route("/hamummal-review/<review_id>/unconfirm-match", methods=["POST"])
@@ -598,8 +659,6 @@ def hamummal_review_fix_name(review_id):
         return jsonify(ok=False, error="필수 값이 없습니다."), 400
     if str(team) != my_team:
         return jsonify(ok=False, error="본인 조의 검토만 수정할 수 있어요."), 403
-    if (data.get("applied_teams") or {}).get(my_team):
-        return jsonify(ok=False, error="이미 반영된 검토라 이름을 고칠 수 없어요."), 409
 
     full_review = data["review"]
     entry = full_review.get(team)
@@ -644,6 +703,7 @@ def hamummal_review_fix_name(review_id):
     # 대화에 그 이름(회차만 다르게 적힌 경우도 포함)으로 보낸 메시지가 있을
     # 때만 제출자 목록으로 옮긴다. 이미 제출자였던 사람은(found_in=="matched")
     # 그 상태를 유지하면서 표시용 원문 이름만 고쳐준다.
+    sync_error = None
     matched_raw = hamummal_matcher.find_chat_sender_match(display_name, data.get("chat_senders") or [])
     if found_in == "matched":
         current_matched = matched_raw is not None
@@ -657,6 +717,7 @@ def hamummal_review_fix_name(review_id):
                 m for m in entry.get("matched") or [] if str(m.get("id")) != str(member_id)
             ]
             entry.setdefault("unmatched_members", []).append(target)
+            sync_error = _sync_if_applied(data, team, member_id, False)
         try:
             db_client.update_review_team_entry(review_id, team, entry)
         except Exception as e:
@@ -668,18 +729,13 @@ def hamummal_review_fix_name(review_id):
             entry["unmatched_members"] = [
                 m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
             ]
-            cleaned_ambiguous = []
-            for amb in entry.get("ambiguous") or []:
-                kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
-                if kept:
-                    amb["candidates"] = kept
-                    cleaned_ambiguous.append(amb)
-            entry["ambiguous"] = cleaned_ambiguous
             entry.setdefault("matched", []).append(target)
+            _purge_resolved_ambiguous(entry)
             try:
                 db_client.update_review_team_entry(review_id, team, entry)
             except Exception as e:
                 return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+            sync_error = _sync_if_applied(data, team, member_id, True)
 
     # 한 번의 업로드로 여러 날짜가 한꺼번에 분석되는 경우가 많아서(업로드 1건 =
     # 검토 row 여러 개), 이 조원이 "이 조"의 다른 날짜에서도 아직 미제출/확인필요로
@@ -696,7 +752,80 @@ def hamummal_review_fix_name(review_id):
         display_name=display_name,
         member=target,
         fixed_dates=sorted(fixed_dates),
+        sync_error=sync_error,
     )
+
+
+@app.route("/hamummal-review/<review_id>/toggle-submission", methods=["POST"])
+def hamummal_review_toggle_submission(review_id):
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    data = db_client.load_review(review_id)
+    if not data:
+        return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다."), 404
+
+    payload = request.get_json(silent=True) or {}
+    team = payload.get("team")
+    member_id = payload.get("member_id")
+    direction = payload.get("direction")  # "exclude"(제출자→미제출) | "include"(미제출→제출자)
+    nickname = payload.get("nickname")
+    real_name = payload.get("real_name")
+    if not (team and member_id and direction in ("exclude", "include")):
+        return jsonify(ok=False, error="필수 값이 없습니다."), 400
+    if str(team) != my_team:
+        return jsonify(ok=False, error="본인 조의 검토만 수정할 수 있어요."), 403
+
+    entry = (data.get("review") or {}).get(team)
+    if not entry:
+        return jsonify(ok=False, error="이 검토에는 해당 조 데이터가 없어요."), 404
+
+    if direction == "exclude":
+        target = None
+        for m in entry.get("matched") or []:
+            if str(m.get("id")) == str(member_id):
+                target = m
+                break
+        if target is None:
+            return jsonify(ok=False, error="제출자 목록에서 해당 조원을 찾지 못했어요."), 404
+        target = dict(target)
+        target.pop("_matched_raw", None)
+        entry["matched"] = [
+            m for m in entry.get("matched") or [] if str(m.get("id")) != str(member_id)
+        ]
+        unmatched_ids = {str(m.get("id")) for m in entry.get("unmatched_members") or []}
+        if str(member_id) not in unmatched_ids:
+            entry.setdefault("unmatched_members", []).append(target)
+        new_status = False
+    else:
+        target = None
+        for m in entry.get("unmatched_members") or []:
+            if str(m.get("id")) == str(member_id):
+                target = m
+                break
+        if target is None:
+            target = {"id": member_id, "nickname": nickname, "real_name": real_name}
+        entry["unmatched_members"] = [
+            m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
+        ]
+        target = dict(target)
+        target.pop("_matched_raw", None)
+        matched_ids = {str(x.get("id")) for x in (entry.get("matched") or [])}
+        if str(member_id) not in matched_ids:
+            entry.setdefault("matched", []).append(target)
+        _purge_resolved_ambiguous(entry)
+        new_status = True
+
+    try:
+        db_client.update_review_team_entry(review_id, team, entry)
+    except Exception as e:
+        return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
+
+    sync_error = _sync_if_applied(data, team, member_id, new_status)
+
+    return jsonify(ok=True, sync_error=sync_error)
 
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])
@@ -753,6 +882,13 @@ def hamummal_review_apply(review_id):
         entry["matched"] = [
             m for m in (entry.get("matched") or []) if str(m.get("id")) not in exclude_ids
         ]
+
+    if extra_ids or exclude_ids:
+        _purge_resolved_ambiguous(entry)
+        try:
+            db_client.update_review_team_entry(review_id, team, entry)
+        except Exception:
+            pass  # 명단 반영 자체는 계속 진행 — 여기서 실패해도 치명적이진 않음
 
     apply_results = hamummal_dashboard.apply_review({team: entry}, check_date_str)
     db_client.mark_review_team_applied(review_id, team, apply_results)
