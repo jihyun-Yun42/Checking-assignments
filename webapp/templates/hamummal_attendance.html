@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
+<title>하멈말 출석율</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:480px;margin:40px auto;padding:0 20px;color:#222}
+  h1{font-size:19px}
+  .back-link{margin-bottom:6px}
+  .back-link a{font-size:13px;color:#888;text-decoration:none}
+  .back-link a:hover{text-decoration:underline}
+  .meta{font-size:13px;color:#888;margin:8px 0 20px;line-height:1.5}
+  .person{padding:10px 0;border-bottom:1px solid #f0f0f0}
+  .person:last-child{border-bottom:none}
+  .person-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+       font-size:14px;margin-bottom:6px}
+  .person-name{font-weight:bold}
+  .person-rate{font-weight:bold;flex-shrink:0}
+  .person-rate.low{color:#c0392b}
+  .person-rate.mid{color:#8a6100}
+  .person-rate.high{color:#0a7a2f}
+  .bar-track{background:#f0f0f0;border-radius:999px;height:8px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:999px}
+  .bar-fill.low{background:#c0392b}
+  .bar-fill.mid{background:#d9a441}
+  .bar-fill.high{background:#0a7a2f}
+  .person-sub{font-size:12px;color:#999;margin-top:4px}
+  .empty{font-size:14px;color:#888;margin-top:20px}
+</style>
+</head>
+<body>
+  <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
+  <h1>📊 하멈말 출석율 — {{ team }}</h1>
+  <p class="meta">분석된 날짜 {{ total_dates }}개를 기준으로 계산했어요.
+    각 조원은 본인이 조원 명단에 있었던 날짜 중에서 제출한 비율이에요
+    (중간에 들어온 조원은 들어오기 전 날짜까지 미제출로 깎이지 않아요).</p>
+  {% if people %}
+    {% for p in people %}
+      {% set rate = p.rate %}
+      {% set cls = 'low' if rate < 50 else ('mid' if rate < 80 else 'high') %}
+      <div class="person">
+        <div class="person-head">
+          <span class="person-name">{{ p.member | hname }}</span>
+          <span class="person-rate {{ cls }}">{{ rate }}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill {{ cls }}" style="width:{{ rate }}%"></div></div>
+        <div class="person-sub">{{ p.matched }}/{{ p.total }}일 제출</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">아직 출석율을 계산할 데이터가 없어요. 먼저 하멈말 파일을 업로드해주세요.</p>
+  {% endif %}
+</body>
+</html>

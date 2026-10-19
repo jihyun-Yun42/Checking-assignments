@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -349,7 +350,157 @@ def hamummal_review_dates():
     dates = db_client.list_review_dates()
     return render_template(
         "hamummal_review_dates.html", dates=dates, today_str=now_kst().date().isoformat(),
+        team=str(member.get("조")),
     )
+
+
+def _team_attendance(team: str):
+    """
+    팀의 지금까지 분석된 날짜들을 기준으로, 지금 조원 명단(가장 최근 날짜
+    기준)에 있는 사람별 출석율을 계산한다. "출석"은 그 날짜에 제출자(matched)로
+    잡혔는지를 기준으로 하고, 분모는 그 조원이 실제로 명단에 있었던 날짜
+    수만 센다 — 중간에 들어온 조원이 들어오기 전 날짜까지 미제출로 깎이지
+    않도록.
+    """
+    rows = db_client.list_team_reviews(team)
+    rows = [r for r in rows if not ((r.get("review") or {}).get("error"))]
+
+    stats = {}
+    for row in rows:
+        entry = row.get("review") or {}
+        matched_today = set()
+        for m in entry.get("matched") or []:
+            mid = str(m.get("id"))
+            matched_today.add(mid)
+            st = stats.setdefault(mid, {"total": 0, "matched": 0, "member": m})
+            st["total"] += 1
+            st["matched"] += 1
+            st["member"] = m
+        for m in entry.get("unmatched_members") or []:
+            mid = str(m.get("id"))
+            if mid in matched_today:
+                continue
+            st = stats.setdefault(mid, {"total": 0, "matched": 0, "member": m})
+            st["total"] += 1
+            st["member"] = m
+
+    latest_entry = (rows[-1].get("review") or {}) if rows else {}
+    latest_ids = {str(m.get("id")) for m in (latest_entry.get("matched") or [])} | \
+        {str(m.get("id")) for m in (latest_entry.get("unmatched_members") or [])}
+
+    people = []
+    for mid in latest_ids:
+        st = stats.get(mid)
+        if not st or not st["total"]:
+            continue
+        rate = round(st["matched"] / st["total"] * 100)
+        people.append({"member": st["member"], "total": st["total"], "matched": st["matched"], "rate": rate})
+    people.sort(key=lambda p: (p["rate"], p["member"].get("real_name") or ""))
+
+    return people, len(rows)
+
+
+@app.route("/hamummal-review/attendance")
+def hamummal_review_attendance():
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    my_team = str(member.get("조"))
+    people, total_dates = _team_attendance(my_team)
+    return render_template(
+        "hamummal_attendance.html", team=my_team, people=people, total_dates=total_dates,
+    )
+
+
+def _current_team_roster(team: str):
+    """
+    "조원 이름 일괄 매칭" 팝업에서 쓸 지금 조원 명단. 아직 한 번도 메시지를
+    안 보낸 사람도 매칭 대상에 넣어야 하므로, 가장 최근 날짜 리뷰의
+    제출자+미제출자를 합쳐서 돌려준다(둘을 합치면 그 날짜의 전체 조원 명단과
+    같다).
+    """
+    rows = db_client.list_team_reviews(team)
+    rows = [r for r in rows if not ((r.get("review") or {}).get("error"))]
+    if not rows:
+        return []
+    latest_entry = rows[-1].get("review") or {}
+    roster = {}
+    for m in (latest_entry.get("matched") or []) + (latest_entry.get("unmatched_members") or []):
+        roster[str(m.get("id"))] = m
+    return list(roster.values())
+
+
+def _register_display_name_override(team: str, member_id, raw: str):
+    db_client.set_display_name_override(team, member_id, raw)
+    # None을 review_id로 넘기면 "건너뛸 현재 리뷰"가 없는 셈이라, 이 조의
+    # 모든 날짜를 다 검사해서 이미 그 이름으로 보낸 메시지가 있던 날짜가
+    # 있으면 그 자리에서 바로 제출완료로 바꿔준다.
+    return _retroactively_apply_other_dates(None, team, member_id, raw)
+
+
+@app.route("/hamummal-review/bulk-match-names", methods=["POST"])
+def hamummal_review_bulk_match_names():
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text") or "")
+    raw_names = [n.strip() for n in re.split(r"[,\n]+", text) if n.strip()]
+    if not raw_names:
+        return jsonify(ok=False, error="이름을 입력해주세요."), 400
+
+    dashboard_members = _current_team_roster(my_team)
+    if not dashboard_members:
+        return jsonify(ok=False, error="아직 분석된 날짜가 없어요. 먼저 하멈말 파일을 업로드해주세요."), 404
+
+    match = hamummal_matcher.match_submitters(raw_names, dashboard_members)
+
+    matched_out = []
+    consumed_raws = set()
+    for m in match["matched"]:
+        raw = m.get("_matched_raw")
+        consumed_raws.add(raw)
+        fixed_dates = _register_display_name_override(my_team, m["id"], raw)
+        matched_out.append({
+            "raw": raw, "member_id": m["id"], "display": _hamummal_display_name(m),
+            "fixed_dates": sorted(fixed_dates),
+        })
+
+    ambiguous_out = []
+    for amb in match["ambiguous"]:
+        consumed_raws.add(amb["raw"])
+        ambiguous_out.append({
+            "raw": amb["raw"],
+            "candidates": [
+                {"member_id": c["id"], "display": _hamummal_display_name(c)} for c in amb["candidates"]
+            ],
+        })
+
+    no_match = [r for r in raw_names if r not in consumed_raws]
+
+    return jsonify(ok=True, matched=matched_out, ambiguous=ambiguous_out, no_match=no_match)
+
+
+@app.route("/hamummal-review/bulk-match-resolve", methods=["POST"])
+def hamummal_review_bulk_match_resolve():
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    payload = request.get_json(silent=True) or {}
+    team = payload.get("team")
+    member_id = payload.get("member_id")
+    raw = str(payload.get("raw") or "").strip()
+    if not (team and member_id and raw):
+        return jsonify(ok=False, error="필수 값이 없습니다."), 400
+    if str(team) != my_team:
+        return jsonify(ok=False, error="본인 조만 수정할 수 있어요."), 403
+
+    fixed_dates = _register_display_name_override(team, member_id, raw)
+    return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
 
 
 @app.route("/hamummal-review/<review_id>")

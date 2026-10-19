@@ -17,10 +17,54 @@
   .today-badge{font-size:11px;font-weight:bold;color:#0a7a2f;background:#eafaf1;
        border:1px solid #8fd6ab;border-radius:999px;padding:2px 8px}
   .empty{font-size:14px;color:#888;margin-top:20px}
+
+  .toolbar-links{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px}
+  .tool-link{font-size:13px;font-weight:bold;color:#3C1E1E;background:#f5f0e8;
+       border:1px solid #e5dcc8;border-radius:999px;padding:6px 12px;cursor:pointer;
+       text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+  .tool-link:hover{border-color:#3C1E1E}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+       align-items:center;justify-content:center;padding:20px;z-index:100}
+  .modal-overlay[hidden]{display:none}
+  .modal-box{background:#fff;border-radius:14px;padding:20px;max-width:440px;width:100%;
+       max-height:85vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2);position:relative}
+  .modal-close-x{position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;
+       background:none;color:#999;font-size:16px;line-height:1;cursor:pointer;border-radius:50%;
+       display:flex;align-items:center;justify-content:center;padding:0;margin:0}
+  .modal-close-x:hover{background:#f2f2f2;color:#333}
+  .modal-title{font-size:16px;font-weight:bold;margin:0 0 8px;color:#222}
+  .modal-desc{font-size:13px;color:#666;line-height:1.5;margin:0 0 14px}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+  .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;
+       cursor:pointer;width:auto;margin:0}
+  .modal-btn-cancel{background:#eee;color:#333}
+  .modal-btn-save{background:#3C1E1E;color:#fff}
+  .modal-btn-save:disabled{background:#ccc;color:#888;cursor:default}
+
+  #bulk-match-input{width:100%;box-sizing:border-box;padding:10px;font-size:14px;
+       border:1px solid #ddd;border-radius:8px;font-family:inherit;resize:vertical}
+
+  .bulk-section-title{font-size:12px;color:#999;margin-top:16px;margin-bottom:6px;
+       text-transform:uppercase}
+  .bulk-row{font-size:13px;padding:8px 10px;border:1px solid #eee;border-radius:8px;
+       margin-bottom:6px;line-height:1.5}
+  .bulk-row.amb{border-color:#f0d9a0;background:#fffaf0}
+  .bulk-sub{font-size:12px;color:#888;margin-top:4px}
+  .bulk-candidates{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .bulk-cand-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
+       padding:5px 11px;font-size:12px;cursor:pointer;width:auto;margin:0}
+  .bulk-cand-btn:hover{background:#fdf3dd}
+  .bulk-cand-btn:disabled{opacity:.5;cursor:default}
+  .bulk-empty{font-size:13px;color:#888;margin-top:14px}
 </style>
 </head>
 <body>
   <h1>📮 하멈말 결과확인</h1>
+  <div class="toolbar-links">
+    <a class="tool-link" href="{{ url_for('hamummal_review_attendance') }}">📊 출석율 보기</a>
+    <span class="tool-link" role="button" tabindex="0" id="bulk-match-open">🔗 조원 이름 일괄 매칭</span>
+  </div>
   {% if dates %}
     <div class="date-list">
       {% for row in dates %}
@@ -33,5 +77,154 @@
   {% else %}
     <p class="empty">아직 업로드된 결과가 없어요.</p>
   {% endif %}
+
+  <div class="modal-overlay" id="bulk-match-modal" hidden>
+    <div class="modal-box">
+      <button type="button" class="modal-close-x" id="bulk-match-close" aria-label="닫기">✕</button>
+      <p class="modal-title">조원 이름 일괄 매칭</p>
+      <p class="modal-desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면,
+        아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
+        다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
+      <textarea id="bulk-match-input" rows="6" placeholder="윤지현, 이종길, 박성수&#10;또는 한 줄에 한 명씩"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="bulk-match-cancel">닫기</button>
+        <button type="button" class="modal-btn modal-btn-save" id="bulk-match-run">매칭하기</button>
+      </div>
+      <div id="bulk-match-results"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var TEAM = {{ team | tojson }};
+      var BULK_MATCH_URL = {{ url_for('hamummal_review_bulk_match_names') | tojson }};
+      var BULK_RESOLVE_URL = {{ url_for('hamummal_review_bulk_match_resolve') | tojson }};
+
+      var modal = document.getElementById('bulk-match-modal');
+      var openBtn = document.getElementById('bulk-match-open');
+      var closeBtn = document.getElementById('bulk-match-close');
+      var cancelBtn = document.getElementById('bulk-match-cancel');
+      var runBtn = document.getElementById('bulk-match-run');
+      var input = document.getElementById('bulk-match-input');
+      var resultsEl = document.getElementById('bulk-match-results');
+
+      function openModal() { modal.hidden = false; }
+      function closeModal() { modal.hidden = true; }
+      openBtn.addEventListener('click', openModal);
+      openBtn.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(); }
+      });
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+      modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+
+      function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s == null ? '' : s;
+        return div.innerHTML;
+      }
+
+      function wireCandidateButtons() {
+        resultsEl.querySelectorAll('.bulk-cand-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var memberId = btn.getAttribute('data-member-id');
+            var raw = btn.getAttribute('data-raw');
+            var row = btn.closest('.bulk-row');
+            row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = true; });
+
+            fetch(BULK_RESOLVE_URL, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ team: TEAM, member_id: memberId, raw: raw }),
+            })
+              .then(function (res) { return res.json(); })
+              .then(function (d) {
+                if (!d.ok) {
+                  var errNote = document.createElement('div');
+                  errNote.className = 'bulk-sub';
+                  errNote.textContent = d.error || '매칭하지 못했어요.';
+                  row.appendChild(errNote);
+                  row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
+                  return;
+                }
+                var note = document.createElement('div');
+                note.className = 'bulk-sub';
+                note.textContent = '✅ 매칭 완료' +
+                  (d.fixed_dates && d.fixed_dates.length
+                    ? (' · 이미 올라온 ' + d.fixed_dates.length + '개 날짜도 같이 제출완료로 바뀌었어요 (' + d.fixed_dates.join(', ') + ')')
+                    : '');
+                row.appendChild(note);
+              })
+              .catch(function () {
+                row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
+              });
+          });
+        });
+      }
+
+      function renderResults(data) {
+        var html = '';
+        if (data.matched && data.matched.length) {
+          html += '<div class="bulk-section-title">✅ 자동 매칭됨 (' + data.matched.length + '명)</div>';
+          data.matched.forEach(function (m) {
+            html += '<div class="bulk-row ok">' + escapeHtml(m.raw) + ' → <strong>' + escapeHtml(m.display) + '</strong>';
+            if (m.fixed_dates && m.fixed_dates.length) {
+              html += '<div class="bulk-sub">이미 올라온 ' + m.fixed_dates.length + '개 날짜도 같이 제출완료로 바뀌었어요 (' +
+                m.fixed_dates.join(', ') + ')</div>';
+            }
+            html += '</div>';
+          });
+        }
+        if (data.ambiguous && data.ambiguous.length) {
+          html += '<div class="bulk-section-title">⚠️ 확인 필요 (' + data.ambiguous.length + '건)</div>';
+          data.ambiguous.forEach(function (amb) {
+            html += '<div class="bulk-row amb">"' + escapeHtml(amb.raw) + '" 님, 누구인가요?' +
+              '<div class="bulk-candidates">' +
+              amb.candidates.map(function (c) {
+                return '<button type="button" class="bulk-cand-btn" data-member-id="' + c.member_id +
+                  '" data-raw="' + escapeHtml(amb.raw) + '">' + escapeHtml(c.display) + '</button>';
+              }).join('') +
+              '</div></div>';
+          });
+        }
+        if (data.no_match && data.no_match.length) {
+          html += '<div class="bulk-section-title">❓ 매칭 안 됨 (' + data.no_match.length + '개)</div>';
+          html += '<div class="bulk-row">' + data.no_match.map(escapeHtml).join(', ') +
+            '<div class="bulk-sub">이 조 명단에서 이름/닉네임이 겹치는 사람을 못 찾았어요. 오타는 아닌지, 다른 조원은 아닌지 확인해보세요.</div></div>';
+        }
+        if (!html) html = '<p class="bulk-empty">매칭된 결과가 없어요.</p>';
+        resultsEl.innerHTML = html;
+        wireCandidateButtons();
+      }
+
+      runBtn.addEventListener('click', function () {
+        var text = input.value.trim();
+        if (!text) return;
+        runBtn.disabled = true;
+        resultsEl.innerHTML = '<p class="bulk-empty">매칭 중…</p>';
+        fetch(BULK_MATCH_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              resultsEl.innerHTML = '<p class="bulk-empty">' + escapeHtml(data.error || '매칭하지 못했어요.') + '</p>';
+              return;
+            }
+            renderResults(data);
+          })
+          .catch(function () {
+            resultsEl.innerHTML = '<p class="bulk-empty">네트워크 오류로 매칭하지 못했어요.</p>';
+          })
+          .finally(function () {
+            runBtn.disabled = false;
+          });
+      });
+    })();
+  </script>
 </body>
 </html>
