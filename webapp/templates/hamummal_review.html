@@ -279,6 +279,11 @@
       var APPLIED = {{ applied | tojson }};
       var APPLIED_MATCHED_IDS = {{ applied_matched_ids | tojson }};
       var APPLIED_HAD_SNAPSHOT = {{ applied_had_snapshot | tojson }};
+      // 한 번도 반영한 적 없어도, 서버가 소리튠 조장페이지를 직접 조회해서
+      // 지금 화면이랑 이미 똑같다고 확인해준 경우 true. 이 경우 페이지가 처음
+      // 뜬 시점의 제출자 목록을 기준선으로 삼아서(아래 liveBaselineMatchedSet),
+      // 스냅샷이 있는 경우와 똑같은 방식으로 "달라진 게 있는지"를 계속 추적한다.
+      var LIVE_ALREADY_APPLIED = {{ live_already_applied | tojson }};
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -294,7 +299,9 @@
 
       function updateSubmitButtonState() {
         var noDelta = false;
-        if (APPLIED && APPLIED_HAD_SNAPSHOT && typeof computeApplyDelta === 'function') {
+        var hasBaseline = (APPLIED && APPLIED_HAD_SNAPSHOT) ||
+          (!APPLIED && !APPLIED_HAD_SNAPSHOT && LIVE_ALREADY_APPLIED);
+        if (hasBaseline && typeof computeApplyDelta === 'function') {
           var delta = computeApplyDelta();
           noDelta = delta.added.length === 0 && delta.removed.length === 0;
         }
@@ -917,6 +924,14 @@
         return map;
       }
 
+      // 반영한 적은 없지만(스냅샷 없음) 서버가 라이브로 이미 일치한다고 확인해준
+      // 경우, 페이지가 뜬 시점의 제출자 목록을 기준선으로 삼는다 — 그 뒤로
+      // 제출/미제출을 바꾸면 이 기준선과 비교해서 "달라진 사람"만 추적할 수 있다.
+      var liveBaselineMatchedSet = {};
+      if (!APPLIED_HAD_SNAPSHOT && LIVE_ALREADY_APPLIED) {
+        Object.keys(currentMatchedMap()).forEach(function (id) { liveBaselineMatchedSet[id] = true; });
+      }
+
       function unmatchedDisplayFor(id) {
         var row = document.querySelector('.unmatched-list .row.miss[data-member-id="' + id + '"]');
         if (!row) return '#' + id;
@@ -929,10 +944,13 @@
         var current = currentMatchedMap();
         var added = [];
         var removed = [];
-        if (!APPLIED_HAD_SNAPSHOT) {
-          // 예전 반영 기록이라 그때의 제출자 스냅샷이 없는 경우(혹은 최초 반영) —
-          // 뭐가 바뀌었는지 정확히 알 수 없으니 지금 제출자 전체를 다시 체크하고
-          // 지금 미제출자 전체를 체크 해제하는 전체 재동기화로 보여준다.
+        var baseline = APPLIED_HAD_SNAPSHOT ? appliedMatchedSet :
+          (LIVE_ALREADY_APPLIED ? liveBaselineMatchedSet : null);
+        if (!baseline) {
+          // 비교할 기준이 아예 없는 경우(최초 반영이고, 소리튠 쪽 라이브 확인도
+          // 못 했거나 지금 화면이랑 다른 경우) — 뭐가 바뀌었는지 정확히 알 수
+          // 없으니 지금 제출자 전체를 다시 체크하고 지금 미제출자 전체를 체크
+          // 해제하는 전체 재동기화로 보여준다.
           Object.keys(current).forEach(function (id) {
             added.push({ id: id, display: current[id] });
           });
@@ -943,9 +961,9 @@
           return { added: added, removed: removed };
         }
         Object.keys(current).forEach(function (id) {
-          if (!appliedMatchedSet[id]) added.push({ id: id, display: current[id] });
+          if (!baseline[id]) added.push({ id: id, display: current[id] });
         });
-        Object.keys(appliedMatchedSet).forEach(function (id) {
+        Object.keys(baseline).forEach(function (id) {
           if (!current[id]) removed.push({ id: id, display: unmatchedDisplayFor(id) });
         });
         return { added: added, removed: removed };

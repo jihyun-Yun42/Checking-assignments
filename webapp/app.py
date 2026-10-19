@@ -634,6 +634,40 @@ def _submitted_at_minutes(member):
     return int(m.group(1)) * 60 + int(m.group(2))
 
 
+def _hamummal_live_in_sync(entry, check_date_str):
+    """
+    아직 한 번도 반영한 적이 없는 경우(스냅샷이 없는 경우)에도, 실제 소리튠
+    조장페이지에 이미 지금 화면과 똑같이 체크돼 있으면 "반영하기" 버튼을
+    미리 비활성화해주기 위한 라이브 비교.
+
+    로그인/조회에 실패하거나(네트워크 오류 등) 확신할 수 없으면 None을
+    돌려주고, 이 경우 버튼은 평소처럼(활성화 상태로) 둔다 — 잘못 판단해서
+    실제로 바뀐 게 있는데도 버튼을 막아버리는 일은 없어야 하므로, "모르면
+    그냥 평소대로(활성화)"가 기본값이다.
+    """
+    phone = entry.get("_phone")
+    if not phone:
+        return None
+    try:
+        session, admin_info = leader_dashboard_client.login(phone)
+        board = leader_dashboard_client.fetch_status_board(
+            session, admin_info["cohort_id"], check_date_str, admin_info["group_id"]
+        )
+    except Exception:
+        return None
+    checks = board.get("checks") or {}
+
+    for m in entry.get("matched") or []:
+        member_checks = checks.get(str(m.get("id"))) or {}
+        if member_checks.get("hamemmal") != 1:
+            return False
+    for m in entry.get("unmatched_members") or []:
+        member_checks = checks.get(str(m.get("id"))) or {}
+        if member_checks.get("hamemmal") == 1:
+            return False
+    return True
+
+
 @app.route("/hamummal-review/<review_id>")
 def hamummal_review(review_id):
     cohort = _active_cohort_or_none()
@@ -693,6 +727,16 @@ def hamummal_review(review_id):
     matched_for_display.sort(key=_submitted_at_minutes)
     display_entry = dict(entry, matched=matched_for_display)
 
+    apply_enabled = bool(cohort) and db_client.is_hamummal_apply_enabled(cohort)
+
+    # 한 번도 반영한 적 없는 경우(스냅샷 없음)에만, 소리튠 조장페이지에 실제로
+    # 이미 지금 화면과 똑같이 체크돼 있는지 라이브로 확인한다. 반영한 적이 있으면
+    # 그때의 스냅샷으로 훨씬 가볍게(네트워크 호출 없이) 같은 걸 판단할 수 있고,
+    # 반영 기능 자체가 꺼져있으면 어차피 버튼이 비활성화라 확인할 필요가 없다.
+    live_already_applied = False
+    if apply_enabled and not applied_had_snapshot:
+        live_already_applied = bool(_hamummal_live_in_sync(entry, data["check_date"]))
+
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -705,11 +749,12 @@ def hamummal_review(review_id):
         chat_senders=all_chat_senders,
         matched_raw_names=matched_raw_names,
         display_name_overrides=display_name_overrides,
-        apply_enabled=bool(cohort) and db_client.is_hamummal_apply_enabled(cohort),
+        apply_enabled=apply_enabled,
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
         applied_matched_ids=applied_matched_ids,
         applied_had_snapshot=applied_had_snapshot,
+        live_already_applied=live_already_applied,
         is_today=is_today,
     )
 
