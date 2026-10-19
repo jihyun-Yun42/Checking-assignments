@@ -65,11 +65,14 @@
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
   /* 데스크탑(넓은 화면)에서는 이름 - 입력칸 - 버튼을 한 줄에, 모바일(좁은
-     화면)에서는 이름을 윗줄에 따로 두고 입력칸+버튼을 아랫줄에 배치한다. */
+     화면)에서는 이름을 윗줄에 따로 두고 입력칸+버튼을 아랫줄에 배치한다.
+     한 줄로 붙었을 때 입력칸이 화면 끝까지 늘어나면 보기 불편해서, 이름 쪽이
+     남는 공간을 먼저 가져가고 입력칸은 일정한 길이로 고정해둔다. */
   @media (min-width:520px){
     .bulk-status-row{flex-direction:row;align-items:center;gap:8px}
-    .bulk-status-row .nm{flex:0 1 auto}
-    .bulk-status-controls{flex:1 1 auto}
+    .bulk-status-row .nm{flex:1 1 auto;min-width:0}
+    .bulk-status-controls{flex:0 0 auto}
+    .bulk-status-input{flex:0 0 auto;width:200px}
   }
 
   .input-wrap{position:relative}
