@@ -389,7 +389,7 @@ def _team_attendance(team: str):
             continue
         rate = round(st["matched"] / total_dates * 100)
         people.append({"member": st["member"], "total": total_dates, "matched": st["matched"], "rate": rate})
-    people.sort(key=lambda p: (p["rate"], p["member"].get("real_name") or ""))
+    people.sort(key=lambda p: (-p["rate"], p["member"].get("real_name") or ""))
 
     return people, total_dates
 
@@ -509,6 +509,30 @@ def hamummal_review_bulk_match_resolve():
 
     db_client.set_display_name_override(team, member_id, raw)
     return jsonify(ok=True)
+
+
+@app.route("/hamummal-review/roster-status")
+def hamummal_review_roster_status():
+    # "조원 이름 일괄 매칭" 팝업 밑에, 지금까지 누가 이미 매칭됐고 누가 아직
+    # 안 됐는지 한눈에 보여주기 위한 목록. 매칭 안 된 사람은 여기서 바로
+    # 카톡 이름을 입력해서 하나씩 매칭할 수도 있게 한다.
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    roster = _current_team_roster(my_team)
+    overrides = db_client.get_display_name_overrides(my_team)
+    people = [
+        {
+            "member_id": m.get("id"),
+            "display": _hamummal_display_name(m),
+            "matched_raw": overrides.get(str(m.get("id"))),
+        }
+        for m in roster
+    ]
+    people.sort(key=lambda p: p["display"])
+    return jsonify(ok=True, people=people)
 
 
 @app.route("/hamummal-review/<review_id>")
@@ -966,7 +990,20 @@ def hamummal_review_toggle_submission(review_id):
     except Exception as e:
         return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
 
-    return jsonify(ok=True, known_raw=known_raw)
+    # 방금 바뀐 내용(제출/미제출)이 이 사람의 출석율에도 바로 반영되게, 저장
+    # 직후 다시 계산한 출석율을 같이 돌려준다. 화면은 새로고침 없이 이 값으로
+    # 배지를 바로 바꿔 끼운다.
+    attn_rate = None
+    try:
+        attendance_people, _ = _team_attendance(team)
+        for p in attendance_people:
+            if str(p["member"].get("id")) == str(member_id):
+                attn_rate = p["rate"]
+                break
+    except Exception:
+        pass
+
+    return jsonify(ok=True, known_raw=known_raw, attn_rate=attn_rate)
 
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])

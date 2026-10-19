@@ -94,6 +94,33 @@ def extract_submitters(txt_path: str, window_start: datetime, window_end: dateti
     return submitters
 
 
+def extract_submission_times(txt_path: str, window_start: datetime, window_end: datetime) -> dict:
+    """
+    extract_submitters와 같은 날짜/시간 범위에서, 보낸 사람별로 "처음" 제출
+    메시지를 보낸 시각을 뽑아 돌려준다("제출자 목록에 몇 시 몇 분에 제출했는지"
+    표시용). 제출 인정 여부 판정 자체는 여전히 extract_submitters만 쓴다 —
+    여긴 시각 정보만 덧붙이는 용도라, 같은 사람이 그 시간대에 여러 번 보냈으면
+    가장 이른 시각을 돌려준다.
+    """
+    times = {}
+    for ts, sender, content in _iter_messages(txt_path):
+        if not _is_submission(content):
+            continue
+        if not (window_start <= ts <= window_end):
+            continue
+        if sender not in times or ts < times[sender]:
+            times[sender] = ts
+    return times
+
+
+def format_submission_time(ts) -> str:
+    # "오후 1:34" 형식 — 결과확인 화면에 그대로 보여줄 용도.
+    hour = ts.hour
+    ampm = "오전" if hour < 12 else "오후"
+    h12 = hour % 12 or 12
+    return f"{ampm} {h12}:{ts.minute:02d}"
+
+
 def extract_all_submitters(txt_path: str) -> set:
     """
     날짜·시간대와 상관없이, 업로드한 파일 전체에서 하멈말 제출 메시지를 보낸

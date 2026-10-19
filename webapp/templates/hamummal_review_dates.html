@@ -61,6 +61,16 @@
   .bulk-nomatch-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
   .bulk-nomatch-trigger:hover{color:#3C1E1E}
   .bulk-roster-picker{max-height:160px;overflow-y:auto}
+  #bulk-roster-status{margin-top:14px;border-top:1px solid #eee;padding-top:10px}
+  .bulk-status-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0}
+  .bulk-status-row .nm{flex:1 1 auto;min-width:0}
+  .bulk-status-row .mr{font-size:12px;color:#888}
+  .bulk-status-input{flex:1 1 auto;min-width:0;padding:5px 8px;font-size:12px;
+       border:1px solid #ddd;border-radius:6px;font-family:inherit}
+  .bulk-status-save-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
+       padding:5px 10px;font-size:12px;cursor:pointer;width:auto;margin:0;flex-shrink:0}
+  .bulk-status-save-btn:hover{background:#fdf3dd}
+  .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
@@ -90,6 +100,7 @@
         아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
         다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
       <textarea id="bulk-match-input" rows="6" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
+      <div id="bulk-roster-status"></div>
       <div class="modal-actions">
         <button type="button" class="modal-btn modal-btn-cancel" id="bulk-match-cancel">닫기</button>
         <button type="button" class="modal-btn modal-btn-save" id="bulk-match-run">매칭하기</button>
@@ -103,6 +114,7 @@
       var TEAM = {{ team | tojson }};
       var BULK_MATCH_URL = {{ url_for('hamummal_review_bulk_match_names') | tojson }};
       var BULK_RESOLVE_URL = {{ url_for('hamummal_review_bulk_match_resolve') | tojson }};
+      var ROSTER_STATUS_URL = {{ url_for('hamummal_review_roster_status') | tojson }};
 
       var modal = document.getElementById('bulk-match-modal');
       var openBtn = document.getElementById('bulk-match-open');
@@ -111,8 +123,9 @@
       var runBtn = document.getElementById('bulk-match-run');
       var input = document.getElementById('bulk-match-input');
       var resultsEl = document.getElementById('bulk-match-results');
+      var statusEl = document.getElementById('bulk-roster-status');
 
-      function openModal() { modal.hidden = false; }
+      function openModal() { modal.hidden = false; loadRosterStatus(); }
       function closeModal() { modal.hidden = true; }
       openBtn.addEventListener('click', openModal);
       openBtn.addEventListener('keydown', function (e) {
@@ -126,6 +139,88 @@
         var div = document.createElement('div');
         div.textContent = s == null ? '' : s;
         return div.innerHTML;
+      }
+
+      // 팝업 밑에 "이미 매칭됨 / 아직 매칭 안 됨" 조원 현황을 보여준다. 매칭
+      // 안 된 사람은 그 자리에서 카톡 이름을 입력해 하나씩 매칭할 수 있다.
+      function loadRosterStatus() {
+        statusEl.innerHTML = '<p class="bulk-empty">불러오는 중…</p>';
+        fetch(ROSTER_STATUS_URL, { credentials: 'same-origin' })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              statusEl.innerHTML = '<p class="bulk-empty">' + escapeHtml(data.error || '불러오지 못했어요.') + '</p>';
+              return;
+            }
+            renderRosterStatus(data.people || []);
+          })
+          .catch(function () {
+            statusEl.innerHTML = '<p class="bulk-empty">네트워크 오류로 불러오지 못했어요.</p>';
+          });
+      }
+
+      function renderRosterStatus(people) {
+        var matched = people.filter(function (p) { return p.matched_raw; });
+        var unmatched = people.filter(function (p) { return !p.matched_raw; });
+        var html = '';
+        if (matched.length) {
+          html += '<div class="bulk-section-title">✅ 이미 매칭됨 (' + matched.length + '명)</div>';
+          matched.forEach(function (p) {
+            html += '<div class="bulk-status-row"><span class="nm">' + escapeHtml(p.display) +
+              '</span><span class="mr">· ' + escapeHtml(p.matched_raw) + '</span></div>';
+          });
+        }
+        if (unmatched.length) {
+          html += '<div class="bulk-section-title">❓ 아직 매칭 안 됨 (' + unmatched.length + '명)</div>';
+          unmatched.forEach(function (p) {
+            html += '<div class="bulk-status-row" data-member-id="' + p.member_id + '">' +
+              '<span class="nm">' + escapeHtml(p.display) + '</span>' +
+              '<input type="text" class="bulk-status-input" placeholder="카톡에서 쓰는 이름">' +
+              '<button type="button" class="bulk-status-save-btn" data-member-id="' + p.member_id + '">매칭</button>' +
+              '</div>';
+          });
+        }
+        if (!html) html = '<p class="bulk-empty">조원 명단을 불러오지 못했어요.</p>';
+        statusEl.innerHTML = html;
+        wireRosterStatusButtons();
+      }
+
+      function wireRosterStatusButtons() {
+        statusEl.querySelectorAll('.bulk-status-save-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var row = btn.closest('.bulk-status-row');
+            var memberId = btn.getAttribute('data-member-id');
+            var raw = row.querySelector('.bulk-status-input').value.trim();
+            if (!raw) return;
+            btn.disabled = true;
+            fetch(BULK_RESOLVE_URL, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ team: TEAM, member_id: memberId, raw: raw }),
+            })
+              .then(function (res) { return res.json(); })
+              .then(function (d) {
+                if (!d.ok) {
+                  showStatusError(row, d.error || '매칭하지 못했어요.');
+                  btn.disabled = false;
+                  return;
+                }
+                loadRosterStatus();
+              })
+              .catch(function () {
+                showStatusError(row, '네트워크 오류로 저장하지 못했어요.');
+                btn.disabled = false;
+              });
+          });
+        });
+      }
+
+      function showStatusError(row, msg) {
+        var note = document.createElement('div');
+        note.className = 'bulk-sub';
+        note.textContent = msg;
+        row.appendChild(note);
       }
 
       function wireCandidateButtons() {
@@ -158,6 +253,7 @@
                 note.className = 'bulk-sub';
                 note.textContent = '✅ 매칭 완료';
                 row.appendChild(note);
+                loadRosterStatus();
               })
               .catch(function () {
                 row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
@@ -249,6 +345,7 @@
               return;
             }
             renderResults(data);
+            loadRosterStatus();
           })
           .catch(function () {
             resultsEl.innerHTML = '<p class="bulk-empty">네트워크 오류로 매칭하지 못했어요.</p>';

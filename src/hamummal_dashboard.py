@@ -3,6 +3,9 @@ from . import db_client, leader_dashboard_client, hamummal_parser, hamummal_matc
 
 def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
+    # "제출자 목록에 몇 시에 제출했는지" 표시용 — 판정(제출했는지 자체)에는
+    # 영향 없고 화면에 보여줄 시각만 따로 뽑는다.
+    submission_times = hamummal_parser.extract_submission_times(txt_path, window_start, window_end)
     # "이름 고치기" 팝업 검색용 — 날짜/시간 상관없이 파일 전체에서 제출한 적
     # 있는 모든 사람. 매칭 판정에는 안 쓰고(그건 위 submitters만 씀), 검색
     # 목록을 넓혀주기 위해서만 쓴다.
@@ -56,6 +59,11 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
             display_name_overrides=display_name_overrides,
             all_chat_senders=sorted(all_submitters),
         )
+        for m in match["matched"]:
+            raw = m.get("_matched_raw")
+            ts = submission_times.get(raw)
+            if ts:
+                m["_submitted_at"] = hamummal_parser.format_submission_time(ts)
         match["error"] = None
         match["_phone"] = login_phone
         result[team] = match
