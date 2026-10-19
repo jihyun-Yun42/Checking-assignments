@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
 <title>하멈말 결과확인</title>
 <style>
+  html{color-scheme:light}
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
-       max-width:640px;margin:30px auto;padding:0 20px;color:#222}
+       max-width:640px;margin:30px auto;padding:0 20px;color:#222;background:#fff}
   h1{font-size:20px;display:flex;align-items:center;gap:8px}
   .today-badge{font-size:12px;font-weight:bold;color:#0a7a2f;background:#eafaf1;
        border:1px solid #8fd6ab;border-radius:999px;padding:3px 10px}
@@ -47,14 +49,17 @@
         padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px}
   .test-note{font-size:13px;color:#888;text-align:center;margin-top:8px}
 
-  .exclude-btn{flex-shrink:0;border:none;border-left:1px solid #eee;background:none;color:#bbb;
+  .exclude-btn{flex-shrink:0;border:none;border-left:1px solid #eee;background:none;
+       background-color:transparent;-webkit-appearance:none;appearance:none;
+       border-radius:0;outline:none;color:#bbb;
        font-size:16px;line-height:1;font-weight:bold;padding:4px 2px 4px 12px;
        cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
        justify-content:center}
   .exclude-btn:hover{color:#c0392b}
   .exclude-btn:disabled{color:#ddd;cursor:default}
 
-  .mark-submitted-btn{flex-shrink:0;border:none;background:none;color:#bbb;
+  .mark-submitted-btn{flex-shrink:0;border:none;background:none;background-color:transparent;
+       -webkit-appearance:none;appearance:none;border-radius:0;outline:none;color:#bbb;
        font-size:16px;line-height:1;font-weight:bold;padding:4px 2px;
        cursor:pointer;margin:0;width:auto;display:inline-flex;align-items:center;
        justify-content:center}
@@ -143,7 +148,7 @@
       <div class="matched-list">
         {% for m in data.matched %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m | hname }}{% if m.get('_submitted_at') %} <span class="submit-time" title="제출 시각">{{ m.get('_submitted_at') }}</span>{% endif %}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
+            <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}{% if m.get('_submitted_at') %} <span class="submit-time" title="제출 시각">{{ m.get('_submitted_at') }}</span>{% endif %}</span>
             <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
               data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
               title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>

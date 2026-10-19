@@ -114,11 +114,8 @@ def extract_submission_times(txt_path: str, window_start: datetime, window_end: 
 
 
 def format_submission_time(ts) -> str:
-    # "오후 1:34" 형식 — 결과확인 화면에 그대로 보여줄 용도.
-    hour = ts.hour
-    ampm = "오전" if hour < 12 else "오후"
-    h12 = hour % 12 or 12
-    return f"{ampm} {h12}:{ts.minute:02d}"
+    # "13:34" 형식(24시간제) — 결과확인 화면에 그대로 보여줄 용도.
+    return f"{ts.hour:02d}:{ts.minute:02d}"
 
 
 def extract_all_submitters(txt_path: str) -> set:
