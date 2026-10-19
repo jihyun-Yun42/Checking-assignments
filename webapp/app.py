@@ -288,6 +288,18 @@ def hamummal_upload_delete_date():
     return redirect(url_for("hamummal_upload"))
 
 
+@app.route("/hamummal-upload/activity-log")
+def hamummal_upload_activity_log():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    team = (request.args.get("team") or "").strip() or None
+    event_type = (request.args.get("event_type") or "").strip() or None
+    logs = db_client.list_hamummal_activity_log(limit=300, team=team, event_type=event_type)
+    return render_template(
+        "hamummal_activity_log.html", logs=logs, team=team or "", event_type=event_type or "",
+    )
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
@@ -777,6 +789,11 @@ def hamummal_review(review_id):
     if apply_enabled and not applied_had_snapshot:
         live_already_applied = bool(_hamummal_live_in_sync(entry, data["check_date"]))
 
+    try:
+        db_client.log_hamummal_activity("view", my_team, member, data["check_date"], review_id)
+    except Exception:
+        pass  # 로그 적재 실패로 결과확인 페이지 자체가 막히면 안 됨
+
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -1219,6 +1236,13 @@ def hamummal_review_apply(review_id):
         removed_ids = prev_matched_ids - current_matched_ids
         added_ids = current_matched_ids - prev_matched_ids
         if prev_applied and not added_ids and not removed_ids:
+            try:
+                db_client.log_hamummal_activity(
+                    "apply", team, member, check_date_str, review_id,
+                    detail={"added": 0, "removed": 0, "results": {team: "바뀐 내용 없음"}},
+                )
+            except Exception:
+                pass
             return jsonify(ok=True, results={team: "마지막 반영 이후로 바뀐 내용이 없어요."})
     else:
         # 반영 기록은 있지만(예전 버전이라) 그때 누굴 반영했는지 스냅샷이 없거나,
@@ -1234,6 +1258,13 @@ def hamummal_review_apply(review_id):
         add_ids_by_team={team: added_ids}, remove_ids_by_team={team: removed_ids},
     )
     db_client.mark_review_team_applied(review_id, team, apply_results, matched_ids=sorted(current_matched_ids))
+    try:
+        db_client.log_hamummal_activity(
+            "apply", team, member, check_date_str, review_id,
+            detail={"added": len(added_ids), "removed": len(removed_ids), "results": apply_results},
+        )
+    except Exception:
+        pass  # 로그 적재 실패로 반영 자체(이미 끝남)가 실패로 보이면 안 됨
 
     return jsonify(ok=True, results=apply_results)
 

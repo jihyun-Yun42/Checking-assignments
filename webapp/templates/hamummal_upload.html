@@ -118,6 +118,8 @@
   {% if has_reviews %}
     <p class="hint">업로드된 결과 보기 → <a href="{{ url_for('hamummal_review_dates') }}">날짜 목록</a></p>
   {% endif %}
+  <p class="hint">누가 결과확인 페이지를 보고 반영하기를 눌렀는지 →
+    <a href="{{ url_for('hamummal_upload_activity_log') }}">사용 로그</a></p>
 
   <h2 class="section-h2">하멈말 진행 시간 설정</h2>
   <p class="hint">실제로 분석된 날짜만 아래에 나와요. 업로드하면 날짜마다 저장된 시간(없으면

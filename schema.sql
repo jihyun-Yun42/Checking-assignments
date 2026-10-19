@@ -83,3 +83,19 @@ CREATE TABLE IF NOT EXISTS hamummal_reviews (
     submission_times JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {카카오 발신자 이름: "HH:MM"} 이 날짜·시간대에 처음 제출한 시각 (조장/부조장이 업로드 이후에 가입해서 나중에 다시 매칭할 때도 제출시각을 보여줄 수 있도록 원본 파일에서 미리 뽑아 저장)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- 누가 하멈말 결과확인 페이지를 봤는지/"소리튠 조장페이지에 반영하기"를 눌렀는지 로그
+-- (관리자 페이지 "하멈말 사용 로그"에서 보여줄 용도).
+CREATE TABLE IF NOT EXISTS hamummal_activity_log (
+    id SERIAL PRIMARY KEY,
+    event_type TEXT NOT NULL,                 -- 'view'(결과확인 페이지 조회) | 'apply'(반영하기 클릭)
+    team TEXT NOT NULL,                        -- 조
+    member_name TEXT,                           -- 접속한 사람 이름
+    member_phone TEXT,                          -- 접속한 사람 휴대폰번호
+    member_role TEXT,                           -- 접속한 사람 역할(조장/부조장/조원)
+    check_date DATE,                            -- 어떤 날짜 검토를 봤는지/반영했는지
+    review_id TEXT,                             -- 검토 id
+    detail JSONB,                                -- apply 결과 요약 등 부가 정보
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hamummal_activity_log_created_at_idx ON hamummal_activity_log (created_at DESC);

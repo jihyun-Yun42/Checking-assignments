@@ -556,3 +556,53 @@ def mark_review_team_applied(review_id: str, team: str, apply_results: dict, mat
         (team, json.dumps(payload, ensure_ascii=False), review_id),
         fetch="none",
     )
+
+
+def log_hamummal_activity(
+    event_type: str, team: str, member: dict, check_date_str: str = None, review_id: str = None, detail: dict = None,
+) -> None:
+    # 누가 하멈말 결과확인 페이지를 봤는지("view")/"반영하기"를 눌렀는지("apply")
+    # 기록. member는 session["phone"]으로 조회한 로그인 멤버 dict(이름/휴대폰번호/
+    # 역할 키 포함) — 관리자 페이지 "하멈말 사용 로그"에서 누가 썼는지 보여주는 용도.
+    # 로그 적재가 실패했다고 본 기능(조회/반영)까지 막히면 안 되므로, 호출하는
+    # 쪽에서 실패를 무시하고 넘어갈 수 있게 예외를 그대로 올린다(호출부에서 try로
+    # 감싼다).
+    _query(
+        '''
+        INSERT INTO hamummal_activity_log
+            (event_type, team, member_name, member_phone, member_role, check_date, review_id, detail)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        ''',
+        (
+            event_type, str(team),
+            (member or {}).get("이름"), (member or {}).get("휴대폰번호"), (member or {}).get("역할"),
+            check_date_str, review_id, json.dumps(detail or {}, ensure_ascii=False),
+        ),
+        fetch="none",
+    )
+
+
+def list_hamummal_activity_log(limit: int = 300, team: str = None, event_type: str = None) -> list:
+    conditions = []
+    params = []
+    if team:
+        conditions.append("team = %s")
+        params.append(str(team))
+    if event_type:
+        conditions.append("event_type = %s")
+        params.append(event_type)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+    return _query(
+        f'''
+        SELECT
+            event_type, team, member_name, member_phone, member_role,
+            to_char(check_date, 'YYYY-MM-DD') AS check_date, review_id, detail,
+            to_char(created_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at
+        FROM hamummal_activity_log
+        {where}
+        ORDER BY created_at DESC
+        LIMIT %s
+        ''',
+        tuple(params),
+    )

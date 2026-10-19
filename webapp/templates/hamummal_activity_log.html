@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
+<title>하멈말 사용 로그 (관리자)</title>
+<style>
+  html{color-scheme:light}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:760px;margin:40px auto;padding:0 20px;color:#222;background:#fff}
+  h1{font-size:19px;margin-bottom:4px}
+  p.hint{font-size:13px;color:#888;line-height:1.5;margin-top:4px}
+  p.hint a{color:#8a5a00}
+
+  .filter-form{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center}
+  .filter-form input[type=text], .filter-form select{
+       padding:8px 10px;font-size:14px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
+  .filter-form input[type=text]{flex:1 1 160px;min-width:0}
+  .filter-form button{padding:8px 14px;font-size:14px;font-weight:bold;background:#3C1E1E;color:#fff;
+       border:none;border-radius:8px;cursor:pointer}
+  .filter-form .clear-link{font-size:13px;color:#888;text-decoration:underline}
+
+  .log-count{font-size:13px;color:#888;margin-top:14px}
+
+  table.log-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  table.log-table th{text-align:left;color:#888;font-weight:normal;padding:6px 6px;border-bottom:1px solid #ddd;
+       white-space:nowrap}
+  table.log-table td{padding:7px 6px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:bold}
+  .badge.view{background:#eef2ff;color:#3b4ea3}
+  .badge.apply{background:#fff3e0;color:#8a5a00}
+  .who{font-weight:bold}
+  .who .role{font-weight:normal;color:#888;font-size:12px}
+  .detail{color:#555;font-size:12px}
+  .empty{font-size:14px;color:#888;margin-top:20px}
+
+  @media (max-width: 560px) {
+    table.log-table thead{display:none}
+    table.log-table, table.log-table tbody, table.log-table tr, table.log-table td{display:block;width:100%}
+    table.log-table tr{border-bottom:1px solid #eee;padding:8px 0}
+    table.log-table td{border-bottom:none;padding:2px 0}
+    table.log-table td::before{content:attr(data-label);display:inline-block;min-width:64px;color:#999;font-size:11px}
+  }
+</style>
+</head>
+<body>
+  <h1>하멈말 사용 로그</h1>
+  <p class="hint">조원이 결과확인 페이지를 언제 봤는지, "소리튠 조장페이지에 반영하기"를 언제 눌렀는지 기록이에요.
+     최근 300건까지만 보여줘요.</p>
+  <p class="hint"><a href="{{ url_for('hamummal_upload') }}">← 하멈말 관리로 돌아가기</a></p>
+
+  <form class="filter-form" method="get" action="{{ url_for('hamummal_upload_activity_log') }}">
+    <input type="text" name="team" placeholder="조 이름으로 필터 (예: 준타조)" value="{{ team }}">
+    <select name="event_type">
+      <option value="" {{ 'selected' if not event_type else '' }}>전체</option>
+      <option value="view" {{ 'selected' if event_type == 'view' else '' }}>조회만</option>
+      <option value="apply" {{ 'selected' if event_type == 'apply' else '' }}>반영만</option>
+    </select>
+    <button type="submit">필터 적용</button>
+    {% if team or event_type %}
+      <a class="clear-link" href="{{ url_for('hamummal_upload_activity_log') }}">필터 지우기</a>
+    {% endif %}
+  </form>
+
+  <p class="log-count">{{ logs|length }}건</p>
+
+  {% if not logs %}
+    <p class="empty">기록이 아직 없어요.</p>
+  {% else %}
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>시간</th>
+          <th>종류</th>
+          <th>조</th>
+          <th>이름</th>
+          <th>검토 날짜</th>
+          <th>상세</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+          <tr>
+            <td data-label="시간">{{ log.created_at.replace('T', ' ') if log.created_at else '' }}</td>
+            <td data-label="종류"><span class="badge {{ log.event_type }}">{{ '조회' if log.event_type == 'view' else '반영' }}</span></td>
+            <td data-label="조">{{ log.team }}</td>
+            <td data-label="이름">
+              <span class="who">{{ log.member_name or '(이름 없음)' }}</span>
+              {% if log.member_role %}<span class="role">· {{ log.member_role }}</span>{% endif %}
+            </td>
+            <td data-label="검토 날짜">{{ log.check_date or '' }}</td>
+            <td data-label="상세" class="detail">
+              {% if log.event_type == 'apply' and log.detail %}
+                {% set results = log.detail.results or {} %}
+                {% set r = results.get(log.team) %}
+                {{ r or ((log.detail.added or 0) ~ '명 반영 / ' ~ (log.detail.removed or 0) ~ '명 해제') }}
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</body>
+</html>
