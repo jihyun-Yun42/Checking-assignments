@@ -414,28 +414,30 @@ def hamummal_review_attendance():
 
 def _current_team_roster(team: str):
     """
-    "조원 이름 일괄 매칭" 팝업에서 쓸 지금 조원 명단. 아직 한 번도 메시지를
-    안 보낸 사람도 매칭 대상에 넣어야 하므로, 가장 최근 날짜 리뷰의
-    제출자+미제출자를 합쳐서 돌려준다(둘을 합치면 그 날짜의 전체 조원 명단과
-    같다).
+    "조원 이름 일괄 매칭" 팝업에서 쓸 지금 조원 명단. 하멈말 파일을 분석한
+    기록이 있는지와는 상관없이, 소리튠 조장페이지에 지금 등록돼 있는 조원
+    명단을 그 자리에서 바로 불러온다(아직 한 번도 소통방에 메시지를 안 보낸
+    사람도 매칭 대상으로 포함하기 위해서다).
     """
-    rows = db_client.list_team_reviews(team)
-    rows = [r for r in rows if not ((r.get("review") or {}).get("error"))]
-    if not rows:
-        return []
-    latest_entry = rows[-1].get("review") or {}
-    roster = {}
-    for m in (latest_entry.get("matched") or []) + (latest_entry.get("unmatched_members") or []):
-        roster[str(m.get("id"))] = m
-    return list(roster.values())
-
-
-def _register_display_name_override(team: str, member_id, raw: str):
-    db_client.set_display_name_override(team, member_id, raw)
-    # None을 review_id로 넘기면 "건너뛸 현재 리뷰"가 없는 셈이라, 이 조의
-    # 모든 날짜를 다 검사해서 이미 그 이름으로 보낸 메시지가 있던 날짜가
-    # 있으면 그 자리에서 바로 제출완료로 바꿔준다.
-    return _retroactively_apply_other_dates(None, team, member_id, raw)
+    members = (db_client.active_members_by_team() or {}).get(str(team)) or []
+    leader_like = [
+        m for m in members
+        if m.get("역할") in ("조장", "부조장") and m.get("휴대폰번호")
+    ]
+    for m in leader_like:
+        phone = m.get("휴대폰번호")
+        try:
+            session, admin_info = leader_dashboard_client.login(phone)
+        except Exception:
+            continue
+        try:
+            board = leader_dashboard_client.fetch_status_board(
+                session, admin_info["cohort_id"], now_kst().date().isoformat(), admin_info["group_id"],
+            )
+        except Exception:
+            continue
+        return board.get("members") or []
+    return []
 
 
 @app.route("/hamummal-review/bulk-match-names", methods=["POST"])
@@ -453,7 +455,7 @@ def hamummal_review_bulk_match_names():
 
     dashboard_members = _current_team_roster(my_team)
     if not dashboard_members:
-        return jsonify(ok=False, error="아직 분석된 날짜가 없어요. 먼저 하멈말 파일을 업로드해주세요."), 404
+        return jsonify(ok=False, error="조원 명단을 불러오지 못했어요. 조장/부조장 번호가 소리튠에 등록돼 있는지 확인해주세요."), 404
 
     match = hamummal_matcher.match_submitters(raw_names, dashboard_members)
 
@@ -462,10 +464,9 @@ def hamummal_review_bulk_match_names():
     for m in match["matched"]:
         raw = m.get("_matched_raw")
         consumed_raws.add(raw)
-        fixed_dates = _register_display_name_override(my_team, m["id"], raw)
+        db_client.set_display_name_override(my_team, m["id"], raw)
         matched_out.append({
             "raw": raw, "member_id": m["id"], "display": _hamummal_display_name(m),
-            "fixed_dates": sorted(fixed_dates),
         })
 
     ambiguous_out = []
@@ -499,8 +500,8 @@ def hamummal_review_bulk_match_resolve():
     if str(team) != my_team:
         return jsonify(ok=False, error="본인 조만 수정할 수 있어요."), 403
 
-    fixed_dates = _register_display_name_override(team, member_id, raw)
-    return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
+    db_client.set_display_name_override(team, member_id, raw)
+    return jsonify(ok=True)
 
 
 @app.route("/hamummal-review/<review_id>")
@@ -533,6 +534,7 @@ def hamummal_review(review_id):
 
     team_applied = (data.get("applied_teams") or {}).get(my_team) or {}
     applied_matched_ids = team_applied.get("matched_ids") or []
+    applied_had_snapshot = bool(team_applied) and team_applied.get("matched_ids") is not None
     is_today = data["check_date"] == now_kst().date().isoformat()
     y, mo, d = map(int, data["check_date"].split("-"))
     check_date_label = f"{mo}월 {d}일자"
@@ -551,6 +553,9 @@ def hamummal_review(review_id):
     # 이름으로 보낸 메시지를 못 찾은 사람에게 등록된 이름을 같이 보여주기 위함.
     display_name_overrides = db_client.get_display_name_overrides(my_team)
 
+    attendance_people, _ = _team_attendance(my_team)
+    attendance_by_id = {str(p["member"].get("id")): p["rate"] for p in attendance_people}
+
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -567,7 +572,9 @@ def hamummal_review(review_id):
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
         applied_matched_ids=applied_matched_ids,
+        applied_had_snapshot=applied_had_snapshot,
         is_today=is_today,
+        attendance_by_id=attendance_by_id,
     )
 
 
@@ -973,15 +980,26 @@ def hamummal_review_apply(review_id):
     # 골라서 소리튠에 반영한다. 지난 반영 기록이 없으면(최초 반영) "달라진 사람"이
     # 곧 지금 제출자 전체가 된다.
     prev_applied = (data.get("applied_teams") or {}).get(team) or {}
-    prev_matched_ids = {str(x) for x in (prev_applied.get("matched_ids") or [])}
+    had_snapshot = prev_applied.get("matched_ids") is not None
     current_matched_ids = {str(m.get("id")) for m in entry.get("matched") or []}
-    removed_ids = prev_matched_ids - current_matched_ids
-    added_ids = current_matched_ids - prev_matched_ids
+    current_unmatched_ids = {str(m.get("id")) for m in entry.get("unmatched_members") or []}
 
-    if prev_applied and not added_ids and not removed_ids:
-        return render_template(
-            "hamummal_done.html", results={team: "마지막 반영 이후로 바뀐 내용이 없어요."},
-        )
+    if had_snapshot:
+        prev_matched_ids = {str(x) for x in (prev_applied.get("matched_ids") or [])}
+        removed_ids = prev_matched_ids - current_matched_ids
+        added_ids = current_matched_ids - prev_matched_ids
+        if prev_applied and not added_ids and not removed_ids:
+            return render_template(
+                "hamummal_done.html", results={team: "마지막 반영 이후로 바뀐 내용이 없어요."},
+            )
+    else:
+        # 반영 기록은 있지만(예전 버전이라) 그때 누굴 반영했는지 스냅샷이 없거나,
+        # 아예 첫 반영인 경우 — 뭐가 바뀌었는지 정확히 알 수 없으니 이번 한 번은
+        # 지금 제출자 전체를 다시 체크하고 지금 미제출자 전체를 체크 해제해서
+        # 소리튠 조장페이지를 지금 화면 상태와 완전히 맞춰놓는다. 이후부터는
+        # 스냅샷이 생겨서 바뀐 사람만 다시 반영한다.
+        added_ids = current_matched_ids
+        removed_ids = current_unmatched_ids
 
     apply_results = hamummal_dashboard.apply_review(
         {team: entry}, check_date_str, remove_ids_by_team={team: removed_ids},

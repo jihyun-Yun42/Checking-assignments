@@ -85,7 +85,7 @@
       <p class="modal-desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면,
         아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
         다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
-      <textarea id="bulk-match-input" rows="6" placeholder="윤지현, 이종길, 박성수&#10;또는 한 줄에 한 명씩"></textarea>
+      <textarea id="bulk-match-input" rows="6" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
       <div class="modal-actions">
         <button type="button" class="modal-btn modal-btn-cancel" id="bulk-match-cancel">닫기</button>
         <button type="button" class="modal-btn modal-btn-save" id="bulk-match-run">매칭하기</button>
@@ -150,10 +150,7 @@
                 }
                 var note = document.createElement('div');
                 note.className = 'bulk-sub';
-                note.textContent = '✅ 매칭 완료' +
-                  (d.fixed_dates && d.fixed_dates.length
-                    ? (' · 이미 올라온 ' + d.fixed_dates.length + '개 날짜도 같이 제출완료로 바뀌었어요 (' + d.fixed_dates.join(', ') + ')')
-                    : '');
+                note.textContent = '✅ 매칭 완료';
                 row.appendChild(note);
               })
               .catch(function () {
@@ -168,12 +165,7 @@
         if (data.matched && data.matched.length) {
           html += '<div class="bulk-section-title">✅ 자동 매칭됨 (' + data.matched.length + '명)</div>';
           data.matched.forEach(function (m) {
-            html += '<div class="bulk-row ok">' + escapeHtml(m.raw) + ' → <strong>' + escapeHtml(m.display) + '</strong>';
-            if (m.fixed_dates && m.fixed_dates.length) {
-              html += '<div class="bulk-sub">이미 올라온 ' + m.fixed_dates.length + '개 날짜도 같이 제출완료로 바뀌었어요 (' +
-                m.fixed_dates.join(', ') + ')</div>';
-            }
-            html += '</div>';
+            html += '<div class="bulk-row ok">' + escapeHtml(m.raw) + ' → <strong>' + escapeHtml(m.display) + '</strong></div>';
           });
         }
         if (data.ambiguous && data.ambiguous.length) {
