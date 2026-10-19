@@ -64,6 +64,14 @@
   .bulk-status-save-btn:hover{background:#fdf3dd}
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
+  /* 데스크탑(넓은 화면)에서는 이름 - 입력칸 - 버튼을 한 줄에, 모바일(좁은
+     화면)에서는 이름을 윗줄에 따로 두고 입력칸+버튼을 아랫줄에 배치한다. */
+  @media (min-width:520px){
+    .bulk-status-row{flex-direction:row;align-items:center;gap:8px}
+    .bulk-status-row .nm{flex:0 1 auto}
+    .bulk-status-controls{flex:1 1 auto}
+  }
+
   .input-wrap{position:relative}
   #bulk-toast{display:none;position:absolute;left:0;right:0;top:100%;margin-top:6px;z-index:5;
        background:#FBF3EA;color:#3C1E1E;font-size:13px;font-weight:bold;border:1px solid #E8DFD0;
@@ -391,6 +399,16 @@
                 showToast('네트워크 오류로 저장하지 못했어요.');
                 btn.disabled = false;
               });
+          });
+        });
+        // 입력칸에서 엔터를 치면 같은 줄의 매칭/수정 버튼을 누른 것처럼 동작한다.
+        statusEl.querySelectorAll('.bulk-status-input').forEach(function (input) {
+          input.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            var row = input.closest('.bulk-status-row');
+            var btn = row && row.querySelector('.bulk-status-save-btn');
+            if (btn && !btn.disabled) btn.click();
           });
         });
       }
