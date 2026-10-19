@@ -32,6 +32,7 @@ MISSION_TYPE_IDS = {
     "daily_mission": 7,
     "inner33": 2,
     "speak_mission": 3,
+    "hamemmal": 4,  # /hamummal-upload/debug-mission-id로 실제 반영 기록과 대조해서 확인한 값
 }
 
 OUT_MEMBER_STATUS = "out_of_group_management"
