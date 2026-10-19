@@ -16,7 +16,7 @@
 
   .input-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:4px}
   #bulk-match-input{flex:1 1 auto;min-width:0;box-sizing:border-box;padding:10px;font-size:14px;
-       border:1px solid #ddd;border-radius:8px;font-family:inherit;resize:vertical}
+       border:1px solid #ddd;border-radius:8px;font-family:inherit;resize:none}
   #bulk-match-run{flex-shrink:0;width:auto;margin:0;border:none;border-radius:8px;
        background:#3C1E1E;color:#fff;font-weight:bold;font-size:14px;padding:12px 16px;
        cursor:pointer;white-space:nowrap}
@@ -25,12 +25,15 @@
   .section-divider{border:none;border-top:1px solid #eee;margin:22px 0 14px}
   .board-title{font-size:15px;font-weight:bold;margin:0 0 4px}
 
+  .bulk-section{margin-top:4px}
   .bulk-section-title{font-size:12px;color:#999;margin-top:16px;margin-bottom:6px;
        text-transform:uppercase}
   .bulk-row{font-size:13px;padding:8px 10px;border:1px solid #eee;border-radius:8px;
        margin-bottom:6px;line-height:1.5}
   .bulk-row.amb{border-color:#f0d9a0;background:#fffaf0}
+  .bulk-row.resolved{background:#f3faf3;border-color:#cfe9cf}
   .bulk-sub{font-size:12px;color:#888;margin-top:4px}
+  .bulk-sub.resolved-note{color:#0a7a2f;font-weight:bold}
   .bulk-candidates{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .bulk-cand-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
        padding:5px 11px;font-size:12px;cursor:pointer;width:auto;margin:0}
@@ -39,6 +42,7 @@
   .bulk-empty{font-size:13px;color:#888;margin-top:14px}
   .bulk-row.no-match{background:#fafafa;cursor:pointer}
   .bulk-row.no-match:hover{border-color:#d8c48a}
+  .bulk-row.no-match.resolved{cursor:default}
   .bulk-nomatch-trigger{font-weight:bold}
   .bulk-roster-picker{max-height:160px;overflow-y:auto}
 
@@ -56,32 +60,29 @@
   .bulk-status-save-btn:hover{background:#fdf3dd}
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
-  #bulk-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
-       background:#3C1E1E;color:#fff;font-size:13px;font-weight:bold;padding:11px 18px;
-       border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.2);opacity:0;pointer-events:none;
-       transition:opacity .25s ease, transform .25s ease;z-index:200;white-space:nowrap}
-  #bulk-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #bulk-toast{display:none;margin:8px 0 0;background:#3C1E1E;color:#fff;font-size:13px;font-weight:bold;
+       padding:10px 14px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  #bulk-toast.show{display:block}
 </style>
 </head>
 <body>
   <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>🔗 조원 이름 일괄 매칭</h1>
   <p class="desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면,
-    아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
-    다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
+    아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.</p>
 
   <div class="input-row">
-    <textarea id="bulk-match-input" rows="4" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
-    <button type="button" id="bulk-match-run">매칭하기</button>
+    <textarea id="bulk-match-input" rows="4" placeholder="위지현_Jenna, 박성수_Charlie, 이좆길_Aaron&#10;홐는 한 줄에 한 명씩"></textarea>
+    <button type="button" id="bulk-match-run">매칭하갰</button>
   </div>
+
+  <div id="bulk-toast"></div>
 
   <div id="bulk-match-results"></div>
 
   <hr class="section-divider">
-  <p class="board-title">조원 매칭 현황</p>
+  <p class="board-title">조원 매칭 톄황</p>
   <div id="bulk-roster-status"></div>
-
-  <div id="bulk-toast"></div>
 
   <script>
     (function () {
@@ -112,7 +113,25 @@
         }, 3200);
       }
 
-      // ---------- 이번 매칭 실행 결과(확인 필요 / 매칭 안 됨) ----------
+      function fixedDatesSuffix(fixedDates) {
+        if (fixedDates && fixedDates.length) {
+          return ' · 준개 ' + fixedDates.length + '개 날짜 제출도 같이 반영됨';
+        }
+        return '';
+      }
+
+      // ---------- 이겈 매칭 실톉 결과(확읗필요 / 매칭 안 됨) ----------
+
+      // 매칭이 둝난 뒤에도 카드 자체는 진우진 않고 남겨⌜(누구로 매칭됐는지
+      // 계속 보이게) "resolved" 표시만 하고, 그섹션 제목 옆의 (n명/n건) 숫자는
+      // 아직 안 끝난 카드 수만 세어서 다시 그려준다.
+      function refreshSectionCount(sectionEl) {
+        if (!sectionEl) return;
+        var countEl = sectionEl.querySelector('.bulk-section-count');
+        if (!countEl) return;
+        var remaining = sectionEl.querySelectorAll('.bulk-row:not(.resolved)').length;
+        countEl.textContent = remaining;
+      }
 
       function wireCandidateButtons() {
         resultsEl.querySelectorAll('.bulk-cand-btn').forEach(function (btn) {
@@ -122,6 +141,7 @@
             e.stopPropagation();
             var memberId = btn.getAttribute('data-member-id');
             var raw = btn.getAttribute('data-raw');
+            var matchedDisplay = btn.textContent;
             var row = btn.closest('.bulk-row');
             row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = true; });
 
@@ -141,13 +161,17 @@
                   row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
                   return;
                 }
-                // 매칭이 끝나면 후보 목록(긴 이름 리스트)은 치우고 "매칭 완료"만
-                // 남긴다 — 매칭할 때마다 카드가 점점 번잡해지지 않도록.
-                row.innerHTML = '';
+                // 후보 버튼/안내문만 치우고, 원래 보이던 원문(raw) 텍스트는
+                // 그대로 남겨서 "누가 매칭됐는지"가 카드에서 계속 보이게 한다.
+                row.querySelectorAll('.bulk-candidates, .bulk-roster-picker, .bulk-sub').forEach(function (el) {
+                  el.remove();
+                });
                 var note = document.createElement('div');
-                note.className = 'bulk-sub';
-                note.textContent = '✅ 매칭 완료';
+                note.className = 'bulk-sub resolved-note';
+                note.textContent = '✅ ' + matchedDisplay + '(으)로 매칭 완료' + fixedDatesSuffix(d.fixed_dates);
                 row.appendChild(note);
+                row.classList.add('resolved');
+                refreshSectionCount(row.closest('.bulk-section'));
                 loadRosterStatus();
               })
               .catch(function () {
@@ -162,8 +186,10 @@
           if (row.dataset.wired) return;
           row.dataset.wired = '1';
           var toggle = function (e) {
+            if (row.classList.contains('resolved')) return;
             if (e && e.target && e.target.closest('.bulk-cand-btn')) return;
             var picker = row.querySelector('.bulk-roster-picker');
+            if (!picker) return;
             if (!picker.hidden) { picker.hidden = true; return; }
             if (!picker.childElementCount) {
               var raw = row.getAttribute('data-raw');
@@ -190,7 +216,9 @@
         lastRoster = data.roster || [];
         var html = '';
         if (data.no_match && data.no_match.length) {
-          html += '<div class="bulk-section-title">❓ 매칭 안 됨 (' + data.no_match.length + '명) — 눌러서 직접 선택</div>';
+          html += '<div class="bulk-section" data-kind="no-match">' +
+            '<div class="bulk-section-title">❓ 매칭 안 됨 (<span class="bulk-section-count">' + data.no_match.length + '</span>명) — 눌러서 직접 선택</div>' +
+            '<div class="bulk-section-rows">';
           data.no_match.forEach(function (raw) {
             html += '<div class="bulk-row no-match" data-raw="' + escapeHtml(raw) + '">' +
               '<span class="bulk-nomatch-trigger">' + escapeHtml(raw) + '</span>' +
@@ -198,11 +226,14 @@
               '<div class="bulk-candidates bulk-roster-picker" hidden></div>' +
               '</div>';
           });
+          html += '</div></div>';
         }
         if (data.ambiguous && data.ambiguous.length) {
-          html += '<div class="bulk-section-title">⚠️ 확인 필요 (' + data.ambiguous.length + '건)</div>';
+          html += '<div class="bulk-section" data-kind="amb">' +
+            '<div class="bulk-section-title">⚠️ 확인 필요 (<span class="bulk-section-count">' + data.ambiguous.length + '</span>건)</div>' +
+            '<div class="bulk-section-rows">';
           data.ambiguous.forEach(function (amb) {
-            html += '<div class="bulk-row amb">"' + escapeHtml(amb.raw) + '" 님, 누구인가요?' +
+            html += '<div class="bulk-row amb" data-raw="' + escapeHtml(amb.raw) + '">"' + escapeHtml(amb.raw) + '" 님, 누구인가요?' +
               '<div class="bulk-candidates">' +
               amb.candidates.map(function (c) {
                 return '<button type="button" class="bulk-cand-btn" data-member-id="' + c.member_id +
@@ -210,6 +241,7 @@
               }).join('') +
               '</div></div>';
           });
+          html += '</div></div>';
         }
         resultsEl.innerHTML = html;
         wireCandidateButtons();
@@ -236,6 +268,7 @@
             var autoCount = (data.matched || []).length;
             var manualCount = (data.ambiguous || []).length + (data.no_match || []).length;
             showToast('자동매칭됨 ' + autoCount + '명 · 수동 매칭 필요 ' + manualCount + '명');
+            input.value = '';
             loadRosterStatus();
           })
           .catch(function () {
@@ -248,19 +281,32 @@
 
       // ---------- 조원 매칭 현황판 ----------
 
+      var rosterStatusLoaded = false;
+
       function loadRosterStatus() {
-        statusEl.innerHTML = '<p class="bulk-empty">불러오는 중…</p>';
+        // 처음 열렸을 때만 "불러오는 중…"으로 통째로 비운다. 한 명 매칭/수정
+        // 후 다시 불러올 땐 기존 목록을 그대로 둔 채 데이터만 받아와서 새로
+        // 그린다 — 매번 통째로 비웠다 채우면 목록 높이가 잠깐 줄어들면서
+        // 스크롤이 맨 위로 튀어버리기 때문.
+        if (!rosterStatusLoaded) {
+          statusEl.innerHTML = '<p class="bulk-empty">불러오는 중…</p>';
+        }
         fetch(ROSTER_STATUS_URL, { credentials: 'same-origin' })
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!data.ok) {
-              statusEl.innerHTML = '<p class="bulk-empty">' + escapeHtml(data.error || '불러오지 못했어요.') + '</p>';
+              if (!rosterStatusLoaded) {
+                statusEl.innerHTML = '<p class="bulk-empty">' + escapeHtml(data.error || '불러오지 못했어요.') + '</p>';
+              }
               return;
             }
+            rosterStatusLoaded = true;
             renderRosterStatus(data.people || []);
           })
           .catch(function () {
-            statusEl.innerHTML = '<p class="bulk-empty">네트워크 오류로 불러오지 못했어요.</p>';
+            if (!rosterStatusLoaded) {
+              statusEl.innerHTML = '<p class="bulk-empty">네트워크 오류로 불러오지 못했어요.</p>';
+            }
           });
       }
 
@@ -276,6 +322,12 @@
       }
 
       function renderRosterStatus(people) {
+        // 통째로 다시 그리면 (특히 매칭 안 된 사람 ↔ 매칭된 사람 사이에서
+        // 행이 섹션을 넘나들 때) 문서 높이가 잠깐 바뀌면서 스크롤이 튈 수
+        // 있어서, 다시 그리기 직전의 스크롤 위치를 기억해뒀다가 그린 다음
+        // 그대로 복원한다.
+        var scrollX = window.scrollX, scrollY = window.scrollY;
+
         // 매칭 안 된 사람을 먼저 보여줘야 그 사람들을 채워 넣기 편하다.
         var unmatched = people.filter(function (p) { return !p.matched_raw; });
         var matched = people.filter(function (p) { return p.matched_raw; });
@@ -291,6 +343,8 @@
         if (!html) html = '<p class="bulk-empty">조원 명단을 불러오지 못했어요.</p>';
         statusEl.innerHTML = html;
         wireRosterStatusButtons();
+
+        window.scrollTo(scrollX, scrollY);
       }
 
       function wireRosterStatusButtons() {
@@ -314,7 +368,7 @@
                   btn.disabled = false;
                   return;
                 }
-                showToast('매칭 완료');
+                showToast('매칭 완료' + fixedDatesSuffix(d.fixed_dates));
                 loadRosterStatus();
               })
               .catch(function () {

@@ -518,7 +518,8 @@ def hamummal_review_bulk_match_resolve():
         return jsonify(ok=False, error="본인 조만 수정할 수 있어요."), 403
 
     db_client.set_display_name_override(team, member_id, raw)
-    return jsonify(ok=True)
+    fixed_dates = _retroactively_apply_other_dates(None, team, member_id, raw)
+    return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
 
 
 @app.route("/hamummal-review/roster-status")
@@ -538,11 +539,14 @@ def hamummal_review_roster_status():
     # 많다(이름/닉네임이 카톡 표시이름과 자연스럽게 겹치는 경우) — 그런 사람도
     # "아직 매칭 안 됨"으로 잘못 분류되지 않도록, 가장 최근 분석된 날짜의
     # 제출자 목록도 같이 확인한다.
+    # rows는 날짜 오름차순이라, 순서대로 덮어쓰면 사람별로 가장 최근 날짜의
+    # 자동 매칭 원문이 남는다 — 최근 분석에서 안 보인(그날 미제출인) 사람도
+    # 예전에 자동으로 식별된 적 있으면 그 값을 쓴다.
     auto_matched = {}
     rows = db_client.list_team_reviews(my_team)
-    if rows:
-        latest_entry = (rows[-1].get("review") or {}).get(my_team) or {}
-        for m in latest_entry.get("matched") or []:
+    for row in rows:
+        entry = (row.get("review") or {}).get(my_team) or {}
+        for m in entry.get("matched") or []:
             raw = m.get("_matched_raw")
             if raw:
                 auto_matched[str(m.get("id"))] = raw
@@ -551,12 +555,17 @@ def hamummal_review_roster_status():
     for m in roster:
         mid = str(m.get("id"))
         override_raw = overrides.get(mid)
-        matched_raw = override_raw or auto_matched.get(mid)
+        auto_raw = auto_matched.get(mid)
+        # 실제 대화로 식별된 자동 매칭이 있으면 그게 더 정확하다(이름/닉네임이
+        # 바뀌기 전에 일괄매칭으로 등록해둔 override가 오래돼서 틀어진 경우가
+        # 있다) — 자동 매칭을 우선으로 쓰고, 자동 매칭이 아예 없는 사람만
+        # override로 보여준다.
+        matched_raw = auto_raw or override_raw
         people.append({
             "member_id": m.get("id"),
             "display": _hamummal_display_name(m),
             "matched_raw": matched_raw,
-            "auto": bool(matched_raw) and not override_raw,
+            "auto": bool(auto_raw),
         })
     people.sort(key=lambda p: p["display"])
     return jsonify(ok=True, people=people)
@@ -611,9 +620,6 @@ def hamummal_review(review_id):
     # 이름으로 보낸 메시지를 못 찾은 사람에게 등록된 이름을 같이 보여주기 위함.
     display_name_overrides = db_client.get_display_name_overrides(my_team)
 
-    attendance_people, _ = _team_attendance(my_team)
-    attendance_by_id = {str(p["member"].get("id")): p["rate"] for p in attendance_people}
-
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -632,7 +638,6 @@ def hamummal_review(review_id):
         applied_matched_ids=applied_matched_ids,
         applied_had_snapshot=applied_had_snapshot,
         is_today=is_today,
-        attendance_by_id=attendance_by_id,
     )
 
 
@@ -1017,20 +1022,7 @@ def hamummal_review_toggle_submission(review_id):
     except Exception as e:
         return jsonify(ok=False, error=f"저장하지 못했습니다: {e}"), 500
 
-    # 방금 바뀐 내용(제출/미제출)이 이 사람의 출석율에도 바로 반영되게, 저장
-    # 직후 다시 계산한 출석율을 같이 돌려준다. 화면은 새로고침 없이 이 값으로
-    # 배지를 바로 바꿔 끼운다.
-    attn_rate = None
-    try:
-        attendance_people, _ = _team_attendance(team)
-        for p in attendance_people:
-            if str(p["member"].get("id")) == str(member_id):
-                attn_rate = p["rate"]
-                break
-    except Exception:
-        pass
-
-    return jsonify(ok=True, known_raw=known_raw, attn_rate=attn_rate)
+    return jsonify(ok=True, known_raw=known_raw)
 
 
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])

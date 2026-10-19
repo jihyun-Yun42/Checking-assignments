@@ -25,12 +25,6 @@
   .row.ok{color:#0a7a2f}
   .row.miss{color:#888}
   .row.ok > span:first-child, .row.miss > span:first-child{flex:1 1 auto;min-width:0}
-  .attn-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;
-       font-size:11px;font-weight:bold;vertical-align:middle}
-  .attn-badge.t-gray{background:#e0e0e0;color:#424242}
-  .attn-badge.t-yellow{background:#fff3cd;color:#8a6100}
-  .attn-badge.t-lgreen{background:#dcf0d8;color:#2e7d32}
-  .attn-badge.t-dgreen{background:#0a7a2f;color:#fff}
   .submit-time{display:inline-block;margin-left:6px;font-size:11px;color:#888;font-weight:normal}
   .err{color:#c0392b;font-weight:bold}
 
@@ -148,9 +142,8 @@
       <div class="section-title">제출자로 자동 확인됨 (<span class="matched-count">{{ data.matched|length }}</span>명) — 반영시 자동 체크됩니다</div>
       <div class="matched-list">
         {% for m in data.matched %}
-          {% set attn_rate = attendance_by_id.get(m.id | string) %}
           <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m | hname }}{% if attn_rate is not none %} <span class="attn-badge {{ 't-gray' if attn_rate < 50 else ('t-yellow' if attn_rate < 80 else ('t-lgreen' if attn_rate < 100 else 't-dgreen')) }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}{% if m.get('_submitted_at') %} <span class="submit-time" title="제출 시각">{{ m.get('_submitted_at') }}</span>{% endif %}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
+            <span>✅ {{ m | hname }}{% if m.get('_submitted_at') %} <span class="submit-time" title="제출 시각">{{ m.get('_submitted_at') }}</span>{% endif %}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}</span>
             <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
               data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
               title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
@@ -191,12 +184,10 @@
         {% for m in data.unmatched_members %}
           {% set override_name = display_name_overrides.get(m.id | string) %}
           {% set known_hint = override_name or m.get('_known_raw') %}
-          {% set attn_rate = attendance_by_id.get(m.id | string) %}
           <div class="row miss" data-member-id="{{ m.id }}">
             <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
               data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
               title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
-              {% if attn_rate is not none %}<span class="attn-badge {{ 't-gray' if attn_rate < 50 else ('t-yellow' if attn_rate < 80 else ('t-lgreen' if attn_rate < 100 else 't-dgreen')) }}" title="하멈말 출석율">{{ attn_rate }}%</span>{% endif %}
               {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
             <span class="row-actions">
               <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
@@ -283,20 +274,6 @@
       var APPLIED = {{ applied | tojson }};
       var APPLIED_MATCHED_IDS = {{ applied_matched_ids | tojson }};
       var APPLIED_HAD_SNAPSHOT = {{ applied_had_snapshot | tojson }};
-      var ATTENDANCE_BY_ID = {{ attendance_by_id | tojson }};
-
-      // 제출자/미제출자 행을 JS로 새로 만들 때도 서버에서 그려준 것과 똑같은
-      // 출석율 배지를 붙이기 위한 공용 헬퍼.
-      function buildAttnBadge(memberId) {
-        var rate = ATTENDANCE_BY_ID[String(memberId)];
-        if (rate === undefined || rate === null) return null;
-        var cls = rate < 50 ? 't-gray' : (rate < 80 ? 't-yellow' : (rate < 100 ? 't-lgreen' : 't-dgreen'));
-        var span = document.createElement('span');
-        span.className = 'attn-badge ' + cls;
-        span.title = '하멈말 출석율';
-        span.textContent = rate + '%';
-        return span;
-      }
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -405,9 +382,6 @@
                 row.style.opacity = '';
                 return;
               }
-              if (data.attn_rate !== undefined && data.attn_rate !== null) {
-                ATTENDANCE_BY_ID[String(memberId)] = data.attn_rate;
-              }
               row.remove();
               bumpCount(teamEl, '.matched-count', -1);
               addUnmatchedRow(teamEl, team, memberId, nickname, realName, display, data.known_raw);
@@ -467,11 +441,6 @@
         trigger.setAttribute('data-real-name', realName || '');
         trigger.setAttribute('data-display', display);
         trigger.appendChild(document.createTextNode(display));
-        var badge = buildAttnBadge(memberId);
-        if (badge) {
-          trigger.appendChild(document.createTextNode(' '));
-          trigger.appendChild(badge);
-        }
         var tag = document.createElement('span');
         trigger.appendChild(document.createTextNode(' '));
         if (hintText) {
@@ -520,11 +489,6 @@
 
         var span = document.createElement('span');
         span.appendChild(document.createTextNode('✅ ' + display));
-        var badge = buildAttnBadge(memberId);
-        if (badge) {
-          span.appendChild(document.createTextNode(' '));
-          span.appendChild(badge);
-        }
         if (rawText) {
           span.appendChild(document.createTextNode(' '));
           var rawSpan = document.createElement('span');
@@ -587,9 +551,6 @@
               showInfoModal(data.error || '저장하지 못했습니다.');
               btn.disabled = false;
               return;
-            }
-            if (data.attn_rate !== undefined && data.attn_rate !== null) {
-              ATTENDANCE_BY_ID[String(memberId)] = data.attn_rate;
             }
             removeUnmatchedRow(teamEl, memberId);
             addMatchedRow(teamEl, team, memberId, display, data.known_raw || null);
