@@ -70,6 +70,11 @@
   .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;cursor:pointer}
   .modal-btn-cancel{background:#eee;color:#333}
   .modal-btn-save{background:#3C1E1E;color:#fff}
+
+  .logout-row{margin-top:28px;padding-top:14px;border-top:1px solid #eee;text-align:center}
+  .logout-btn{border:none;background:none;color:#999;font-size:12px;cursor:pointer;
+       padding:6px 10px;text-decoration:underline;text-decoration-style:dotted}
+  .logout-btn:hover{color:#c0392b}
 </style>
 </head>
 <body>
@@ -108,6 +113,12 @@
   <div class="tag-box" id="tag-text">
     <div class="skeleton skeleton-line" style="width:90%"></div>
     <div class="skeleton skeleton-line" style="width:60%;margin-top:8px"></div>
+  </div>
+
+  <div class="logout-row">
+    <form method="post" action="{{ url_for('logout') }}" id="logout-form" style="display:inline">
+      <button type="submit" class="logout-btn">로그아웃</button>
+    </form>
   </div>
 
   <div class="modal-overlay" id="rename-modal" hidden>
@@ -239,6 +250,15 @@
         refreshBtn.innerHTML = '<span class="spinner-inline"></span>새로고침';
         loadDashboardData();
       });
+
+      var logoutForm = document.getElementById('logout-form');
+      if (logoutForm) {
+        logoutForm.addEventListener('submit', function (e) {
+          if (!window.confirm('로그아웃하시겠어요? 다시 로그인하려면 휴대폰 번호를 입력해야 해요.')) {
+            e.preventDefault();
+          }
+        });
+      }
 
       function openRenameModal(memberId, currentName) {
         renameMemberId = memberId;

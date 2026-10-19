@@ -123,6 +123,13 @@ def dashboard():
     )
 
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("phone", None)
+    flash("로그아웃됐어요.", "success")
+    return redirect(url_for("phone_entry"))
+
+
 @app.route("/dashboard/data")
 def dashboard_data():
     phone = session.get("phone")
