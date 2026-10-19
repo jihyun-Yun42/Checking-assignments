@@ -18,7 +18,10 @@
   .team{border:1px solid #e2e2e2;border-radius:12px;padding:14px 16px;margin-bottom:16px}
   .team h2{font-size:16px;margin:0 0 8px}
   .row{font-size:14px;padding:3px 0}
-  .row.ok, .row.miss{display:flex;align-items:center;gap:10px}
+  .row.ok, .row.miss{display:flex;align-items:center;gap:10px;
+       border-bottom:1px dashed #eee;padding-bottom:7px;margin-bottom:3px}
+  .matched-list .row.ok:last-child, .unmatched-list .row.miss:last-child{
+       border-bottom:none;margin-bottom:0}
   .row.ok{color:#0a7a2f}
   .row.miss{color:#888}
   .row.ok > span:first-child, .row.miss > span:first-child{flex:1 1 auto;min-width:0}
@@ -308,7 +311,12 @@
       var pendingConfirmCount = 0;
 
       function updateSubmitButtonState() {
-        submitBtn.disabled = baseSubmitDisabled || pendingConfirmCount > 0;
+        var noDelta = false;
+        if (APPLIED && APPLIED_HAD_SNAPSHOT && typeof computeApplyDelta === 'function') {
+          var delta = computeApplyDelta();
+          noDelta = delta.added.length === 0 && delta.removed.length === 0;
+        }
+        submitBtn.disabled = baseSubmitDisabled || pendingConfirmCount > 0 || noDelta;
         submitBtn.textContent = pendingConfirmCount > 0 ? '저장 중…' : baseSubmitText;
       }
 
@@ -323,12 +331,18 @@
       var infoModalDesc = document.getElementById('info-modal-desc');
       var infoModalOk = document.getElementById('info-modal-ok');
 
-      function showInfoModal(message) {
+      var infoModalReloadOnClose = false;
+      function showInfoModal(message, reloadOnClose) {
         infoModalDesc.textContent = message == null ? '' : message;
         infoModal.hidden = false;
+        infoModalReloadOnClose = !!reloadOnClose;
       }
       function closeInfoModal() {
         infoModal.hidden = true;
+        if (infoModalReloadOnClose) {
+          infoModalReloadOnClose = false;
+          location.reload();
+        }
       }
       infoModalOk.addEventListener('click', closeInfoModal);
       document.getElementById('info-modal-close').addEventListener('click', closeInfoModal);
@@ -492,6 +506,7 @@
         bumpCount(teamEl, '.unmatched-count', 1);
         var emptyEl = teamEl.querySelector('.unmatched-empty');
         if (emptyEl) emptyEl.remove();
+        updateSubmitButtonState();
         return row;
       }
 
@@ -544,6 +559,7 @@
         bumpCount(teamEl, '.matched-count', 1);
         var emptyEl = teamEl.querySelector('.matched-empty');
         if (emptyEl) emptyEl.remove();
+        updateSubmitButtonState();
         return row;
       }
 
@@ -1014,22 +1030,37 @@
       }
 
       form.addEventListener('submit', function (e) {
+        // 바뀐 내용이 없을 때는 버튼 자체가 비활성화돼 있으므로(updateSubmitButtonState),
+        // 여기까지 올 일이 없다 — 혹시 모를 경우를 대비한 안전장치만 남긴다.
         if (submitBtn.disabled) return;
         e.preventDefault();
-        if (APPLIED) {
-          var delta = computeApplyDelta();
-          if (APPLIED_HAD_SNAPSHOT && delta.added.length === 0 && delta.removed.length === 0) {
-            showInfoModal('마지막 반영 이후로 바뀐 내용이 없어요.');
-            return;
-          }
-        }
         listEl.innerHTML = buildSummary();
         modal.hidden = false;
       });
 
       okBtn.addEventListener('click', function () {
         modal.hidden = true;
-        form.submit();
+        submitBtn.disabled = true;
+        submitBtn.textContent = '반영 중…';
+        fetch(form.action, { method: 'POST', credentials: 'same-origin' })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              showInfoModal(data.error || '반영하지 못했습니다.');
+              updateSubmitButtonState();
+              return;
+            }
+            var lines = Object.keys(data.results || {}).map(function (t) {
+              return data.results[t];
+            });
+            // 반영 직후엔 "마지막 반영" 기준(APPLIED_MATCHED_IDS 등)이 서버에서
+            // 바뀌었으니, 팝업을 닫을 때 새로고침해서 화면을 그 기준에 맞춘다.
+            showInfoModal(lines.join('\n') || '반영됐어요.', true);
+          })
+          .catch(function () {
+            showInfoModal('네트워크 오류로 반영하지 못했습니다.');
+            updateSubmitButtonState();
+          });
       });
       cancelBtn.addEventListener('click', function () {
         modal.hidden = true;
@@ -1040,6 +1071,8 @@
       modal.addEventListener('click', function (e) {
         if (e.target === modal) modal.hidden = true;
       });
+
+      updateSubmitButtonState();
     })();
   </script>
 </body>

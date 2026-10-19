@@ -354,6 +354,16 @@ def hamummal_review_dates():
     )
 
 
+@app.route("/hamummal-review/bulk-match-page")
+def hamummal_review_bulk_match_page():
+    # "조원 이름 일괄 매칭"은 내용이 많아져서(붙여넣기, 확인 필요, 현황판 등)
+    # 작은 팝업보다 자기 페이지로 보여주는 게 낫다.
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    return render_template("hamummal_bulk_match.html", team=str(member.get("조")))
+
+
 def _team_attendance(team: str):
     """
     팀의 지금까지 분석된 날짜들을 기준으로, 지금 조원 명단(가장 최근 날짜
@@ -523,14 +533,31 @@ def hamummal_review_roster_status():
 
     roster = _current_team_roster(my_team)
     overrides = db_client.get_display_name_overrides(my_team)
-    people = [
-        {
+
+    # override로 등록한 적 없어도, 실제 카톡 대화로 이미 자동 매칭된 사람이
+    # 많다(이름/닉네임이 카톡 표시이름과 자연스럽게 겹치는 경우) — 그런 사람도
+    # "아직 매칭 안 됨"으로 잘못 분류되지 않도록, 가장 최근 분석된 날짜의
+    # 제출자 목록도 같이 확인한다.
+    auto_matched = {}
+    rows = db_client.list_team_reviews(my_team)
+    if rows:
+        latest_entry = (rows[-1].get("review") or {}).get(my_team) or {}
+        for m in latest_entry.get("matched") or []:
+            raw = m.get("_matched_raw")
+            if raw:
+                auto_matched[str(m.get("id"))] = raw
+
+    people = []
+    for m in roster:
+        mid = str(m.get("id"))
+        override_raw = overrides.get(mid)
+        matched_raw = override_raw or auto_matched.get(mid)
+        people.append({
             "member_id": m.get("id"),
             "display": _hamummal_display_name(m),
-            "matched_raw": overrides.get(str(m.get("id"))),
-        }
-        for m in roster
-    ]
+            "matched_raw": matched_raw,
+            "auto": bool(matched_raw) and not override_raw,
+        })
     people.sort(key=lambda p: p["display"])
     return jsonify(ok=True, people=people)
 
@@ -1010,19 +1037,19 @@ def hamummal_review_toggle_submission(review_id):
 def hamummal_review_apply(review_id):
     cohort = _active_cohort_or_none()
     if not (cohort and db_client.is_hamummal_apply_enabled(cohort)):
-        return "지금은 반영 기능이 꺼져 있어요. 관리자(하멈말 업로드 페이지)에서 켜야 사용할 수 있어요.", 403
+        return jsonify(ok=False, error="지금은 반영 기능이 꺼져 있어요. 관리자(하멈말 업로드 페이지)에서 켜야 사용할 수 있어요."), 403
     member = _current_member_or_none(cohort)
     if not member:
-        return redirect(url_for("phone_entry"))
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
     my_team = str(member.get("조"))
 
     data = db_client.load_review(review_id)
     if not data:
-        return "존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요.", 404
+        return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요."), 404
 
     full_review = data["review"]
     if my_team not in full_review:
-        return f"이 검토에는 '{my_team}'의 데이터가 없어요.", 404
+        return jsonify(ok=False, error=f"이 검토에는 '{my_team}'의 데이터가 없어요."), 404
 
     check_date_str = data["check_date"]
     team = my_team
@@ -1042,9 +1069,7 @@ def hamummal_review_apply(review_id):
         removed_ids = prev_matched_ids - current_matched_ids
         added_ids = current_matched_ids - prev_matched_ids
         if prev_applied and not added_ids and not removed_ids:
-            return render_template(
-                "hamummal_done.html", results={team: "마지막 반영 이후로 바뀐 내용이 없어요."},
-            )
+            return jsonify(ok=True, results={team: "마지막 반영 이후로 바뀐 내용이 없어요."})
     else:
         # 반영 기록은 있지만(예전 버전이라) 그때 누굴 반영했는지 스냅샷이 없거나,
         # 아예 첫 반영인 경우 — 뭐가 바뀌었는지 정확히 알 수 없으니 이번 한 번은
@@ -1060,7 +1085,7 @@ def hamummal_review_apply(review_id):
     )
     db_client.mark_review_team_applied(review_id, team, apply_results, matched_ids=sorted(current_matched_ids))
 
-    return render_template("hamummal_done.html", results=apply_results)
+    return jsonify(ok=True, results=apply_results)
 
 
 if __name__ == "__main__":
