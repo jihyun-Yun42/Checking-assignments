@@ -195,6 +195,11 @@
                 }
                 note.textContent = '✅ ' + matchedDisplay + '(으)로 매칭 완료' +
                   fixedDatesSuffix(d.fixed_dates) + (row.classList.contains('no-match') ? ' · 눌러서 수정' : '');
+                // 매칭 완료 후엔 후보 목록(선택 패널)을 다시 접어서 카드 크기를
+                // 줄인다 — 열어둔 채로 두면 매칭된 뒤에도 계속 커 보인다.
+                // 다시 누르면 toggle()이 또 열어주므로 수정은 그대로 가능하다.
+                var picker = row.querySelector('.bulk-roster-picker');
+                if (picker) picker.hidden = true;
                 var wasResolved = row.classList.contains('resolved');
                 row.classList.add('resolved');
                 if (!wasResolved) refreshSectionCount(row.closest('.bulk-section'));

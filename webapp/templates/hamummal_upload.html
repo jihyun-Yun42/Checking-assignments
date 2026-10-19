@@ -47,6 +47,29 @@
   details.window-details summary::before{content:"▸ ";}
   details.window-details[open] summary::before{content:"▾ ";}
   details.window-details[open] summary{border-radius:10px 10px 0 0;border-bottom:none}
+
+  .file-drop-zone{position:relative;border:2px dashed #ddd;border-radius:10px;padding:18px 14px;
+       margin-top:6px;text-align:center;transition:border-color .15s,background .15s;box-sizing:border-box}
+  .file-drop-zone.drag-over{border-color:#3C1E1E;background:#f5f0e8}
+  .file-drop-zone input[type=file]{position:absolute;inset:0;width:100%;height:100%;
+       opacity:0;cursor:pointer;margin:0;padding:0}
+  .file-drop-hint{font-size:13px;color:#888;margin:0;pointer-events:none}
+  .file-drop-name{font-size:13px;font-weight:bold;color:#3C1E1E;margin:6px 0 0;pointer-events:none}
+
+  .danger-box{border:1px solid #f3c6c6;background:#fff6f6;border-radius:10px;padding:4px 14px;margin-top:12px}
+  .danger-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:12px 0;border-bottom:1px dashed #f3c6c6}
+  .danger-row:last-child{border-bottom:none}
+  .danger-row form{margin:0;flex-shrink:0}
+  .danger-label{font-size:13px;font-weight:bold;color:#333}
+  .danger-desc{font-size:12px;font-weight:normal;color:#999;display:block;margin-top:2px}
+  .danger-btn{margin:0;width:auto;padding:8px 14px;font-size:13px;background:#c0392b;flex-shrink:0}
+  .danger-btn:hover{background:#a53125}
+  .danger-btn.small{padding:6px 12px;font-size:12px}
+  .date-delete-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:8px 0;border-bottom:1px dashed #eee;font-size:13px}
+  .date-delete-row:last-child{border-bottom:none}
+  .date-delete-row form{margin:0}
 </style>
 </head>
 <body>
@@ -137,9 +160,54 @@
       </div>
     </div>
     <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
-    <input type="file" name="chat_file" accept=".txt,.csv" required>
+    <div id="file-drop-zone" class="file-drop-zone">
+      <input type="file" name="chat_file" id="chat-file-input" accept=".txt,.csv" required>
+      <p class="file-drop-hint" id="file-drop-hint">파일을 여기로 끌어다 놓거나, 눌러서 선택하세요</p>
+      <p class="file-drop-name" id="file-drop-name" hidden></p>
+    </div>
     <button type="submit" id="submit-btn">분석하기</button>
   </form>
+
+  <h2 class="section-h2">⚠️ 하멈말 데이터 초기화</h2>
+  <p class="hint">기수가 끝나고 다음 기수를 시작할 때 쓰는 기능이에요. 한 번 지우면 되돌릴 수
+     없으니 신중하게 눌러주세요.</p>
+
+  <div class="danger-box">
+    <div class="danger-row">
+      <span class="danger-label">하멈말 분석 데이터 전체 삭제<br>
+        <span class="danger-desc">지금까지 업로드·분석된 모든 날짜의 결과를 전부 지워요.</span></span>
+      <form method="post" action="{{ url_for('hamummal_upload_reset_all_reviews') }}"
+        onsubmit="return confirm('정말로 하멈말 분석 데이터를 전부 지울까요?\n업로드된 모든 날짜의 결과가 사라지고 되돌릴 수 없어요.');">
+        <button type="submit" class="danger-btn">전체 삭제</button>
+      </form>
+    </div>
+    <div class="danger-row">
+      <span class="danger-label">조원 매칭 정보 초기화<br>
+        <span class="danger-desc">수동으로 등록한 카톡이름 매칭과 확인 완료 기록을 전부 지워요.</span></span>
+      <form method="post" action="{{ url_for('hamummal_upload_reset_matches') }}"
+        onsubmit="return confirm('정말로 조원 매칭 정보를 초기화할까요?\n수동으로 등록해둔 카톡이름이 전부 사라지고 되돌릴 수 없어요.');">
+        <button type="submit" class="danger-btn">매칭 초기화</button>
+      </form>
+    </div>
+  </div>
+
+  {% if date_window_dates %}
+    <details class="window-details">
+      <summary>날짜별로 분석 결과만 따로 삭제하기 ({{ date_window_dates|length }}개)</summary>
+      <div style="border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:4px 12px">
+        {% for row in date_window_dates %}
+          <div class="date-delete-row">
+            <span>{{ row.date }}</span>
+            <form method="post" action="{{ url_for('hamummal_upload_delete_date') }}"
+              onsubmit="return confirm('{{ row.date }} 날짜의 분석 결과를 지울까요?\n되돌릴 수 없어요.');">
+              <input type="hidden" name="date" value="{{ row.date }}">
+              <button type="submit" class="danger-btn small">삭제</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
 
   <script>
     document.getElementById('upload-form').addEventListener('submit', function () {
@@ -147,6 +215,50 @@
       btn.disabled = true;
       btn.textContent = '분석 중… (파일이 크면 시간이 걸려요)';
     });
+
+    (function () {
+      var zone = document.getElementById('file-drop-zone');
+      var input = document.getElementById('chat-file-input');
+      var hint = document.getElementById('file-drop-hint');
+      var nameEl = document.getElementById('file-drop-name');
+
+      function showFileName() {
+        if (input.files && input.files.length) {
+          nameEl.textContent = '📎 ' + input.files[0].name;
+          nameEl.hidden = false;
+          hint.textContent = '다른 파일로 바꾸려면 다시 끌어다 놓거나 눌러주세요';
+        } else {
+          nameEl.hidden = true;
+          hint.textContent = '파일을 여기로 끌어다 놓거나, 눌러서 선택하세요';
+        }
+      }
+      input.addEventListener('change', showFileName);
+
+      ['dragenter', 'dragover'].forEach(function (evt) {
+        zone.addEventListener(evt, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.add('drag-over');
+        });
+      });
+      ['dragleave', 'dragend'].forEach(function (evt) {
+        zone.addEventListener(evt, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.remove('drag-over');
+        });
+      });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove('drag-over');
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) {
+          input.files = files;
+          showFileName();
+        }
+      });
+    })();
   </script>
 {% endif %}
 </body>

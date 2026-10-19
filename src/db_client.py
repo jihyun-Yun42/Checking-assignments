@@ -505,6 +505,33 @@ def update_review_team_entry(review_id: str, team: str, entry: dict) -> None:
     )
 
 
+def delete_all_hamummal_reviews() -> int:
+    # 하멈말 분석 결과(업로드해서 분석된 모든 날짜)를 통째로 지운다. 기수
+    # 구분 컬럼이 없는 테이블이라 전체를 지우는 거라서, 새 기수를 시작할 때
+    # (관리자 페이지의 "전체 삭제" 버튼) 쓴다.
+    rows = _query("DELETE FROM hamummal_reviews RETURNING id")
+    return len(rows)
+
+
+def delete_hamummal_review_date(check_date_str: str) -> int:
+    # 특정 날짜만 지운다 (파일을 잘못 올렸을 때 등). 같은 날짜를 여러 번
+    # 올렸을 수 있으니 그 날짜의 row를 전부 지운다.
+    rows = _query(
+        "DELETE FROM hamummal_reviews WHERE check_date = %s RETURNING id",
+        (check_date_str,),
+    )
+    return len(rows)
+
+
+def delete_all_hamummal_matches() -> tuple:
+    # 조원 매칭 정보(수동으로 등록한 카톡이름 + "확인 필요"에서 확정한 값)를
+    # 전부 지운다. 다음 기수부터는 새로 자동 매칭되고, 필요하면 다시 수동으로
+    # 매칭하면 된다.
+    overrides = _query("DELETE FROM display_name_overrides RETURNING team")
+    confirmed = _query("DELETE FROM confirmed_matches RETURNING team")
+    return len(overrides), len(confirmed)
+
+
 def mark_review_team_applied(review_id: str, team: str, apply_results: dict, matched_ids=None) -> None:
     # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
     # 검토 전체가 아니라 조 단위로 기록한다. jsonb 병합 연산자(||)로

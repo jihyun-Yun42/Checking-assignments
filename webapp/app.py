@@ -247,6 +247,40 @@ def hamummal_upload_set_windows():
     return redirect(url_for("hamummal_upload"))
 
 
+@app.route("/hamummal-upload/reset-all-reviews", methods=["POST"])
+def hamummal_upload_reset_all_reviews():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    n = db_client.delete_all_hamummal_reviews()
+    flash(f"하멈말 분석 데이터 {n}건을 전부 지웠어요.", "success")
+    return redirect(url_for("hamummal_upload"))
+
+
+@app.route("/hamummal-upload/reset-matches", methods=["POST"])
+def hamummal_upload_reset_matches():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    n_override, n_confirmed = db_client.delete_all_hamummal_matches()
+    flash(f"조원 매칭 정보를 초기화했어요. (수동 등록 {n_override}건, 확인 완료 {n_confirmed}건)", "success")
+    return redirect(url_for("hamummal_upload"))
+
+
+@app.route("/hamummal-upload/delete-date", methods=["POST"])
+def hamummal_upload_delete_date():
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+    date_str = request.form.get("date")
+    if not date_str:
+        flash("삭제할 날짜가 없습니다.")
+        return redirect(url_for("hamummal_upload"))
+    n = db_client.delete_hamummal_review_date(date_str)
+    if n:
+        flash(f"{date_str} 날짜의 분석 결과를 지웠어요.", "success")
+    else:
+        flash(f"{date_str} 날짜의 분석 결과를 찾지 못했어요.")
+    return redirect(url_for("hamummal_upload"))
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
