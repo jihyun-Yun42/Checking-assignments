@@ -41,7 +41,7 @@
   <p class="meta">분석된 날짜 {{ total_dates }}개를 기준으로, 그중 제출한 날짜의 비율이에요.</p>
   {% if people %}
     {% set perfect_count = people | selectattr('rate', 'equalto', 100) | list | length %}
-    <p class="perfect-summary">🎉 100% 달성 {{ perfect_count }}명 / 전체 {{ people|length }}명</p>
+    <p class="perfect-summary">🎉 100% 달성 {{ perfect_count }}명</p>
     {% for p in people %}
       {% set rate = p.rate %}
       {% set cls = 'low' if rate < 50 else ('mid' if rate < 80 else 'high') %}

@@ -571,6 +571,35 @@ def hamummal_review_roster_status():
     return jsonify(ok=True, people=people)
 
 
+def _submitted_at_24h(raw):
+    """"오전/오후 h:mm" 또는 "HH:MM" 형식을 24시간제 "HH:MM"으로 정규화한다.
+    예전에 분석된 날짜들은 DB에 "오후 1:34" 형식으로 이미 저장돼 있어서,
+    새로 분석하는 날짜부터 24시간제로 바뀌어도 화면에 그대로 보여주면 옛날
+    날짜는 계속 12시간제로 보인다 — 그래서 보여줄 때 한 번 더 정규화한다.
+    """
+    if not raw:
+        return raw
+    m = re.match(r"^(오전|오후)\s*(\d{1,2}):(\d{2})$", raw.strip())
+    if not m:
+        return raw
+    ampm, h, mm = m.group(1), int(m.group(2)), m.group(3)
+    if ampm == "오전":
+        h = 0 if h == 12 else h
+    else:
+        h = 12 if h == 12 else h + 12
+    return f"{h:02d}:{mm}"
+
+
+def _submitted_at_minutes(member):
+    # 제출시각 문자열(24시간제로 정규화된 뒤)을 자정 기준 분으로 바꿔 정렬용으로
+    # 쓴다. 시각 정보가 없는 사람(수동 매칭 등)은 시간순 목록의 맨 뒤로 보낸다.
+    raw = member.get("_submitted_at")
+    m = re.match(r"^(\d{1,2}):(\d{2})$", raw) if raw else None
+    if not m:
+        return 10 ** 6
+    return int(m.group(1)) * 60 + int(m.group(2))
+
+
 @app.route("/hamummal-review/<review_id>")
 def hamummal_review(review_id):
     cohort = _active_cohort_or_none()
@@ -620,6 +649,16 @@ def hamummal_review(review_id):
     # 이름으로 보낸 메시지를 못 찾은 사람에게 등록된 이름을 같이 보여주기 위함.
     display_name_overrides = db_client.get_display_name_overrides(my_team)
 
+    # 결과확인 화면에서만 쓸 표시용 사본: 제출시각을 24시간제로 정규화하고,
+    # 제출자 목록을 시간순으로 정렬한다. DB에 저장된 entry 자체는 그대로 둔다
+    # (매칭/반영 로직은 여전히 원본 순서·형식을 쓰면 되므로 건드릴 필요가 없다).
+    matched_for_display = [
+        dict(m, _submitted_at=_submitted_at_24h(m.get("_submitted_at")))
+        for m in (entry.get("matched") or [])
+    ]
+    matched_for_display.sort(key=_submitted_at_minutes)
+    display_entry = dict(entry, matched=matched_for_display)
+
     return render_template(
         "hamummal_review.html",
         review_id=review_id,
@@ -627,7 +666,7 @@ def hamummal_review(review_id):
         check_date_label=check_date_label,
         window_desc=data["window_desc"],
         window_desc_label=window_desc_label,
-        review={my_team: entry},
+        review={my_team: display_entry},
         submitter_count=data.get("submitter_count", 0),
         chat_senders=all_chat_senders,
         matched_raw_names=matched_raw_names,

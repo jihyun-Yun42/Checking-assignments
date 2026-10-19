@@ -49,17 +49,18 @@
   .bulk-roster-picker{max-height:160px;overflow-y:auto}
 
   #bulk-roster-status{margin-top:10px}
-  .bulk-status-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:7px 0;
+  .bulk-status-row{display:flex;flex-direction:column;gap:5px;font-size:13px;padding:9px 0;
        border-bottom:1px dashed #f0f0f0}
   .bulk-status-row:last-child{border-bottom:none}
-  .bulk-status-row .nm{flex:1 1 auto;min-width:0}
+  .bulk-status-row .nm{min-width:0}
   .bulk-status-row .auto-tag{font-size:10px;color:#0a7a2f;background:#eafaf1;
        border-radius:999px;padding:1px 6px;margin-left:4px}
-  .bulk-status-input{flex:1 1 auto;min-width:0;padding:5px 8px;font-size:12px;
+  .bulk-status-controls{display:flex;align-items:center;gap:6px}
+  .bulk-status-input{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:13px;
        border:1px solid #ddd;border-radius:6px;font-family:inherit;
        background:#fff;color:#222}
   .bulk-status-save-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
-       padding:5px 10px;font-size:12px;cursor:pointer;width:auto;margin:0;flex-shrink:0}
+       padding:7px 12px;font-size:12px;cursor:pointer;width:auto;margin:0;flex-shrink:0}
   .bulk-status-save-btn:hover{background:#fdf3dd}
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
@@ -327,10 +328,12 @@
         var autoTag = p.auto ? '<span class="auto-tag">자동</span>' : '';
         return '<div class="bulk-status-row" data-member-id="' + p.member_id + '">' +
           '<span class="nm">' + escapeHtml(p.display) + autoTag + '</span>' +
+          '<div class="bulk-status-controls">' +
           '<input type="text" class="bulk-status-input" placeholder="카톡 이름" value="' +
           escapeHtml(p.matched_raw || '') + '">' +
           '<button type="button" class="bulk-status-save-btn" data-member-id="' + p.member_id + '">' +
           (p.matched_raw ? '수정' : '매칭') + '</button>' +
+          '</div>' +
           '</div>';
       }
 
