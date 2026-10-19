@@ -459,6 +459,40 @@ def get_max_review_date():
     return (row or {}).get("d")
 
 
+def list_applied_review_teams() -> list:
+    # 적어도 한 조는 "반영하기"를 실제로 눌러서 소리튠에 체크까지 저장해본 적
+    # 있는 검토들만 모은다. 소리튠이 하멈말 체크 상태를 "checks" 안에 정확히
+    # 어떤 키(미션타입 id)로 돌려주는지 코드에 문서화돼 있지 않아서, 이미
+    # 반영해둔 적 있는 조(= 그 시점에 실제로 체크된 사람 목록(matched_ids)을
+    # 알고 있는 조)를 찾아 라이브 현황판과 대조해보면 그 키를 역으로 알아낼 수
+    # 있다 — 그 용도로만 쓰는 진단용 조회다.
+    rows = _query(
+        '''
+        SELECT id, to_char(check_date, 'YYYY-MM-DD') AS check_date, review, applied_teams
+        FROM hamummal_reviews
+        WHERE applied_teams <> '{}'::jsonb
+        ORDER BY created_at DESC
+        '''
+    )
+    result = []
+    for row in rows:
+        review = row.get("review") or {}
+        for team, applied in (row.get("applied_teams") or {}).items():
+            matched_ids = applied.get("matched_ids")
+            entry = review.get(team) or {}
+            phone = entry.get("_phone")
+            if not matched_ids or not phone:
+                continue
+            result.append({
+                "review_id": row["id"],
+                "check_date": row["check_date"],
+                "team": team,
+                "phone": phone,
+                "matched_ids": [str(x) for x in matched_ids],
+            })
+    return result
+
+
 def list_review_dates() -> list:
     # 한 번의 업로드로 여러 날짜가 한꺼번에 생길 수 있어서, 날짜별로 가장 최근
     # 업로드 1건씩만 추려서 보여준다 (같은 날짜를 다시 업로드했으면 최신 것으로 교체).

@@ -288,6 +288,64 @@ def hamummal_upload_delete_date():
     return redirect(url_for("hamummal_upload"))
 
 
+@app.route("/hamummal-upload/debug-mission-id")
+def hamummal_upload_debug_mission_id():
+    """
+    [임시 진단용] 소리튠 현황판 API가 하멈말 체크 상태를 "checks" 응답 안에서
+    정확히 어떤 키(미션타입 id)로 돌려주는지 코드에 문서화돼 있지 않아서,
+    "반영하기"를 눌러 실제로 체크해본 적 있는 조들을 찾아 그때 체크한 사람
+    목록(matched_ids)과 지금 라이브 현황판을 대조한다. "반영한 사람은 전부
+    1, 나머지 조원은 전부 1이 아님"을 만족하는 키 후보를 여러 샘플에 걸쳐
+    교집합으로 좁혀서 돌려준다. 정답을 찾으면 config.MISSION_TYPE_IDS에
+    등록하고 이 라우트는 지우면 된다.
+    """
+    if not session.get("hamummal_admin"):
+        return "관리자 인증이 필요합니다.", 403
+
+    samples = db_client.list_applied_review_teams()
+    if not samples:
+        return jsonify(
+            ok=False,
+            error="반영한 적 있는 조가 아직 하나도 없어요. 먼저 아무 조나 '소리튠 조장페이지에 반영하기'를 한 번 눌러주세요.",
+        )
+
+    candidate_ids = None
+    details = []
+    for sample in samples[:10]:  # 너무 많이 돌면 느려지니 최근 10개 샘플만
+        try:
+            live_session, admin_info = leader_dashboard_client.login(sample["phone"])
+            board = leader_dashboard_client.fetch_status_board(
+                live_session, admin_info["cohort_id"], sample["check_date"], admin_info["group_id"]
+            )
+        except Exception as e:
+            details.append({"team": sample["team"], "check_date": sample["check_date"], "error": str(e)})
+            continue
+
+        checks = board.get("checks") or {}
+        matched_set = set(sample["matched_ids"])
+        all_member_ids = {str(m.get("id")) for m in (board.get("members") or [])}
+        other_ids = all_member_ids - matched_set
+
+        all_mids = set()
+        for mc in checks.values():
+            all_mids.update((mc or {}).keys())
+
+        this_sample_candidates = set()
+        for mid in all_mids:
+            matched_ok = bool(matched_set) and all(checks.get(i, {}).get(mid) == 1 for i in matched_set)
+            others_ok = all(checks.get(i, {}).get(mid) != 1 for i in other_ids) if other_ids else True
+            if matched_ok and others_ok:
+                this_sample_candidates.add(mid)
+
+        details.append({
+            "team": sample["team"], "check_date": sample["check_date"],
+            "matched_count": len(matched_set), "candidates_this_sample": sorted(this_sample_candidates),
+        })
+        candidate_ids = this_sample_candidates if candidate_ids is None else (candidate_ids & this_sample_candidates)
+
+    return jsonify(ok=True, overall_candidates=sorted(candidate_ids or []), samples=details)
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
@@ -647,6 +705,20 @@ def _hamummal_live_in_sync(entry, check_date_str):
     아직 한 번도 반영한 적이 없는 경우(스냅샷이 없는 경우)에도, 실제 소리튠
     조장페이지에 이미 지금 화면과 똑같이 체크돼 있으면 "반영하기" 버튼을
     미리 비활성화해주기 위한 라이브 비교.
+
+    [알려진 버그] 소리튠 현황판 API는 다른 미션(줌/데일리/내맛내알/스픽)과
+    달리 체크 상태를 문자열 코드("hamemmal")가 아니라 숫자 미션타입 id로
+    돌려준다(src/leader_dashboard_client.py의 compute_report 참고 —
+    checks[member_id][str(미션타입id)] 형태). 저장할 때 쓰는 문자열 코드
+    "hamemmal"은 숫자 id가 아니라서, 아래 member_checks.get("hamemmal")은
+    사실상 항상 None을 돌려주고, 그래서 이 함수는 matched 멤버가 한 명이라도
+    있으면 거의 항상 False(= "아직 반영 안 됐다고 봄" = 버튼 계속 활성화)를
+    돌려준다. 실제로 이미 반영해본 조/날짜가 있다면
+    "/hamummal-upload/debug-mission-id"로 들어가서 진짜 숫자 id를 찾아,
+    src/config.py의 MISSION_TYPE_IDS에 "hamemmal": <id>로 등록하고 아래
+    "hamemmal"을 str(config.MISSION_TYPE_IDS["hamemmal"])로 바꿔야 한다.
+    그 전까지는 "모르면 평소대로(버튼 활성화 유지)"라는 원래 설계대로 안전하게
+    동작하는 거라, 이대로 둬도 잘못된 정보를 보여주지는 않는다.
 
     로그인/조회에 실패하거나(네트워크 오류 등) 확신할 수 없으면 None을
     돌려주고, 이 경우 버튼은 평소처럼(활성화 상태로) 둔다 — 잘못 판단해서
