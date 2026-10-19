@@ -586,8 +586,10 @@ def list_hamummal_activity_log(limit: int = 300, team: str = None, event_type: s
     conditions = []
     params = []
     if team:
-        conditions.append("team = %s")
-        params.append(str(team))
+        # 정확히 같은 조 이름이 아니어도("달리조"로 "고고!!달리조" 찾기처럼)
+        # 일부만 입력해도 찾을 수 있게 부분일치(대소문자 구분 없이)로 검색한다.
+        conditions.append("team ILIKE %s")
+        params.append(f"%{team}%")
     if event_type:
         conditions.append("event_type = %s")
         params.append(event_type)
