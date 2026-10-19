@@ -42,7 +42,6 @@
   .bulk-empty{font-size:13px;color:#888;margin-top:14px}
   .bulk-row.no-match{background:#fafafa;cursor:pointer}
   .bulk-row.no-match:hover{border-color:#d8c48a}
-  .bulk-row.no-match.resolved{cursor:default}
   .bulk-nomatch-trigger{font-weight:bold}
   .bulk-roster-picker{max-height:160px;overflow-y:auto}
 
@@ -60,8 +59,10 @@
   .bulk-status-save-btn:hover{background:#fdf3dd}
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
-  #bulk-toast{display:none;margin:8px 0 0;background:#3C1E1E;color:#fff;font-size:13px;font-weight:bold;
-       padding:10px 14px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  .input-wrap{position:relative}
+  #bulk-toast{display:none;position:absolute;left:0;right:0;top:100%;margin-top:6px;z-index:5;
+       background:#FBF3EA;color:#3C1E1E;font-size:13px;font-weight:bold;border:1px solid #E8DFD0;
+       padding:10px 14px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
   #bulk-toast.show{display:block}
 </style>
 </head>
@@ -69,19 +70,21 @@
   <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>🔗 조원 이름 일괄 매칭</h1>
   <p class="desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면,
-    아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.</p>
+    아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
+    다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
 
-  <div class="input-row">
-    <textarea id="bulk-match-input" rows="4" placeholder="위지현_Jenna, 박성수_Charlie, 이좆길_Aaron&#10;홐는 한 줄에 한 명씩"></textarea>
-    <button type="button" id="bulk-match-run">매칭하갰</button>
+  <div class="input-wrap">
+    <div class="input-row">
+      <textarea id="bulk-match-input" rows="4" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
+      <button type="button" id="bulk-match-run">매칭하기</button>
+    </div>
+    <div id="bulk-toast"></div>
   </div>
-
-  <div id="bulk-toast"></div>
 
   <div id="bulk-match-results"></div>
 
   <hr class="section-divider">
-  <p class="board-title">조원 매칭 톄황</p>
+  <p class="board-title">조원 매칭 현황</p>
   <div id="bulk-roster-status"></div>
 
   <script>
@@ -115,15 +118,15 @@
 
       function fixedDatesSuffix(fixedDates) {
         if (fixedDates && fixedDates.length) {
-          return ' · 준개 ' + fixedDates.length + '개 날짜 제출도 같이 반영됨';
+          return ' · 지난 ' + fixedDates.length + '개 날짜 제출도 같이 반영됨';
         }
         return '';
       }
 
-      // ---------- 이겈 매칭 실톉 결과(확읗필요 / 매칭 안 됨) ----------
+      // ---------- 이번 매칭 실행 결과(확인 필요 / 매칭 안 됨) ----------
 
-      // 매칭이 둝난 뒤에도 카드 자체는 진우진 않고 남겨⌜(누구로 매칭됐는지
-      // 계속 보이게) "resolved" 표시만 하고, 그섹션 제목 옆의 (n명/n건) 숫자는
+      // 매칭이 끝난 뒤에도 카드 자체는 지우지 않고 남겨서(누구로 매칭됐는지
+      // 계속 보이게) "resolved" 표시만 하고, 그 섹션 제목 옆의 (n명/n건) 숫자는
       // 아직 안 끝난 카드 수만 세어서 다시 그려준다.
       function refreshSectionCount(sectionEl) {
         if (!sectionEl) return;
@@ -161,17 +164,24 @@
                   row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
                   return;
                 }
-                // 후보 버튼/안내문만 치우고, 원래 보이던 원문(raw) 텍스트는
-                // 그대로 남겨서 "누가 매칭됐는지"가 카드에서 계속 보이게 한다.
-                row.querySelectorAll('.bulk-candidates, .bulk-roster-picker, .bulk-sub').forEach(function (el) {
-                  el.remove();
-                });
-                var note = document.createElement('div');
-                note.className = 'bulk-sub resolved-note';
-                note.textContent = '✅ ' + matchedDisplay + '(으)로 매칭 완료' + fixedDatesSuffix(d.fixed_dates);
-                row.appendChild(note);
+                // 후보 버튼은 다시 누르면 고칠 수 있도록 계속 활성화 상태로
+                // 두고(no-match 카드의 선택 패널 자체도 유지해서 다시 열어
+                // 재선택할 수 있게 한다), 안내문만 "매칭 완료" 메모로 바꿔서
+                // 누구로 매칭됐는지 보여준다.
+                row.querySelectorAll('.bulk-cand-btn').forEach(function (b) { b.disabled = false; });
+                var instructionEl = row.querySelector('.bulk-sub:not(.resolved-note)');
+                if (instructionEl) instructionEl.remove();
+                var note = row.querySelector('.bulk-sub.resolved-note');
+                if (!note) {
+                  note = document.createElement('div');
+                  note.className = 'bulk-sub resolved-note';
+                  row.appendChild(note);
+                }
+                note.textContent = '✅ ' + matchedDisplay + '(으)로 매칭 완료' +
+                  fixedDatesSuffix(d.fixed_dates) + (row.classList.contains('no-match') ? ' · 눌러서 수정' : '');
+                var wasResolved = row.classList.contains('resolved');
                 row.classList.add('resolved');
-                refreshSectionCount(row.closest('.bulk-section'));
+                if (!wasResolved) refreshSectionCount(row.closest('.bulk-section'));
                 loadRosterStatus();
               })
               .catch(function () {
@@ -186,7 +196,6 @@
           if (row.dataset.wired) return;
           row.dataset.wired = '1';
           var toggle = function (e) {
-            if (row.classList.contains('resolved')) return;
             if (e && e.target && e.target.closest('.bulk-cand-btn')) return;
             var picker = row.querySelector('.bulk-roster-picker');
             if (!picker) return;
