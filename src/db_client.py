@@ -470,19 +470,21 @@ def list_review_dates() -> list:
 
 
 def list_team_reviews(team: str) -> list:
-    # 이 조 데이터가 들어있는 모든 검토를 날짜순으로 반환한다. 한 번의 업로드로
-    # 여러 날짜(check_date)가 한꺼번에 분석돼서 각각 별도의 row로 저장되므로,
-    # fix-name에서 같은 조원이 여러 날짜에 걸쳐 미제출로 남아있을 때 전부
-    # 한꺼번에 고치려면 이렇게 team 데이터가 있는 모든 row를 가져와야 한다
+    # 이 조 데이터가 들어있는 검토를 날짜순으로, 날짜당 가장 최근 업로드 1건씩만
+    # 반환한다. 카카오톡 내보내기 파일은 항상 누적본이라 같은 날짜를 다시
+    # 업로드하면(예: 더 최신 내용으로 다시 분석) 매번 새 row가 추가되는데,
+    # 그 중복 row까지 다 세면 출석율 분모(날짜 수)가 실제 날짜 수보다 부풀고
+    # fix-name도 화면에 안 보이는 옛날 row를 고치게 된다 — 그래서 같은
+    # check_date는 가장 최근 것(created_at 기준) 하나만 남긴다
     # ("?" 연산자: review jsonb가 team을 top-level 키로 가지고 있는지 검사).
     return _query(
         '''
-        SELECT
+        SELECT DISTINCT ON (check_date)
             id, to_char(check_date, 'YYYY-MM-DD') AS check_date,
             review, applied_teams, chat_senders
         FROM hamummal_reviews
         WHERE review ? %s
-        ORDER BY check_date
+        ORDER BY check_date, created_at DESC
         ''',
         (str(team),),
     )

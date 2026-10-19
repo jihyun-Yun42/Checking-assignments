@@ -57,6 +57,10 @@
   .bulk-cand-btn:hover{background:#fdf3dd}
   .bulk-cand-btn:disabled{opacity:.5;cursor:default}
   .bulk-empty{font-size:13px;color:#888;margin-top:14px}
+  .bulk-row.no-match{background:#fafafa}
+  .bulk-nomatch-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+  .bulk-nomatch-trigger:hover{color:#3C1E1E}
+  .bulk-roster-picker{max-height:160px;overflow-y:auto}
 </style>
 </head>
 <body>
@@ -126,6 +130,8 @@
 
       function wireCandidateButtons() {
         resultsEl.querySelectorAll('.bulk-cand-btn').forEach(function (btn) {
+          if (btn.dataset.wired) return;
+          btn.dataset.wired = '1';
           btn.addEventListener('click', function () {
             var memberId = btn.getAttribute('data-member-id');
             var raw = btn.getAttribute('data-raw');
@@ -160,12 +166,45 @@
         });
       }
 
+      var lastRoster = [];
+
+      function wireNoMatchTriggers() {
+        resultsEl.querySelectorAll('.bulk-nomatch-trigger').forEach(function (trigger) {
+          if (trigger.dataset.wired) return;
+          trigger.dataset.wired = '1';
+          var toggle = function () {
+            var row = trigger.closest('.bulk-row');
+            var picker = row.querySelector('.bulk-roster-picker');
+            if (!picker.hidden) { picker.hidden = true; return; }
+            if (!picker.childElementCount) {
+              var raw = trigger.getAttribute('data-raw');
+              picker.innerHTML = lastRoster.map(function (m) {
+                return '<button type="button" class="bulk-cand-btn" data-member-id="' + m.member_id +
+                  '" data-raw="' + escapeHtml(raw) + '">' + escapeHtml(m.display) + '</button>';
+              }).join('');
+              wireCandidateButtons();
+            }
+            picker.hidden = false;
+          };
+          trigger.addEventListener('click', toggle);
+          trigger.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+          });
+        });
+      }
+
       function renderResults(data) {
+        lastRoster = data.roster || [];
         var html = '';
-        if (data.matched && data.matched.length) {
-          html += '<div class="bulk-section-title">✅ 자동 매칭됨 (' + data.matched.length + '명)</div>';
-          data.matched.forEach(function (m) {
-            html += '<div class="bulk-row ok">' + escapeHtml(m.raw) + ' → <strong>' + escapeHtml(m.display) + '</strong></div>';
+        if (data.no_match && data.no_match.length) {
+          html += '<div class="bulk-section-title">❓ 매칭 안 됨 (' + data.no_match.length + '명) — 눌러서 직접 선택</div>';
+          data.no_match.forEach(function (raw) {
+            html += '<div class="bulk-row no-match">' +
+              '<span class="bulk-nomatch-trigger" role="button" tabindex="0" data-raw="' + escapeHtml(raw) + '">' +
+              escapeHtml(raw) + '</span>' +
+              '<div class="bulk-sub">이 조 명단에서 이름/닉네임이 겹치는 사람을 못 찾았어요. 눌러서 직접 골라주세요.</div>' +
+              '<div class="bulk-candidates bulk-roster-picker" hidden></div>' +
+              '</div>';
           });
         }
         if (data.ambiguous && data.ambiguous.length) {
@@ -180,14 +219,16 @@
               '</div></div>';
           });
         }
-        if (data.no_match && data.no_match.length) {
-          html += '<div class="bulk-section-title">❓ 매칭 안 됨 (' + data.no_match.length + '개)</div>';
-          html += '<div class="bulk-row">' + data.no_match.map(escapeHtml).join(', ') +
-            '<div class="bulk-sub">이 조 명단에서 이름/닉네임이 겹치는 사람을 못 찾았어요. 오타는 아닌지, 다른 조원은 아닌지 확인해보세요.</div></div>';
+        if (data.matched && data.matched.length) {
+          html += '<div class="bulk-section-title">✅ 자동 매칭됨 (' + data.matched.length + '명)</div>';
+          data.matched.forEach(function (m) {
+            html += '<div class="bulk-row ok">' + escapeHtml(m.raw) + ' → <strong>' + escapeHtml(m.display) + '</strong></div>';
+          });
         }
         if (!html) html = '<p class="bulk-empty">매칭된 결과가 없어요.</p>';
         resultsEl.innerHTML = html;
         wireCandidateButtons();
+        wireNoMatchTriggers();
       }
 
       runBtn.addEventListener('click', function () {

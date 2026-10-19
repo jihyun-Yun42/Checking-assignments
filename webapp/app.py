@@ -475,7 +475,20 @@ def hamummal_review_bulk_match_names():
 
     no_match = [r for r in raw_names if r not in consumed_raws]
 
-    return jsonify(ok=True, matched=matched_out, ambiguous=ambiguous_out, no_match=no_match)
+    # 자동으로 못 찾은 이름을 직접 골라서 매칭할 수 있도록, 지금 조원 명단
+    # 전체를 같이 내려준다(화면에서 "매칭 안 됨" 항목을 누르면 이 목록에서
+    # 고를 수 있게).
+    roster_out = sorted(
+        (
+            {"member_id": m["id"], "display": _hamummal_display_name(m)}
+            for m in dashboard_members
+        ),
+        key=lambda r: r["display"],
+    )
+
+    return jsonify(
+        ok=True, matched=matched_out, ambiguous=ambiguous_out, no_match=no_match, roster=roster_out,
+    )
 
 
 @app.route("/hamummal-review/bulk-match-resolve", methods=["POST"])
@@ -940,6 +953,7 @@ def hamummal_review_toggle_submission(review_id):
         known_raw_existing = target.pop("_known_raw", None)
         if known_raw_existing:
             target["_matched_raw"] = known_raw_existing
+            known_raw = known_raw_existing
         else:
             target.pop("_matched_raw", None)
         matched_ids = {str(x.get("id")) for x in (entry.get("matched") or [])}

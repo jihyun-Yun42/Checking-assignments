@@ -279,6 +279,20 @@
       var APPLIED = {{ applied | tojson }};
       var APPLIED_MATCHED_IDS = {{ applied_matched_ids | tojson }};
       var APPLIED_HAD_SNAPSHOT = {{ applied_had_snapshot | tojson }};
+      var ATTENDANCE_BY_ID = {{ attendance_by_id | tojson }};
+
+      // 제출자/미제출자 행을 JS로 새로 만들 때도 서버에서 그려준 것과 똑같은
+      // 출석율 배지를 붙이기 위한 공용 헬퍼.
+      function buildAttnBadge(memberId) {
+        var rate = ATTENDANCE_BY_ID[String(memberId)];
+        if (rate === undefined || rate === null) return null;
+        var cls = rate < 50 ? 't-gray' : (rate < 80 ? 't-yellow' : (rate < 100 ? 't-lgreen' : 't-dgreen'));
+        var span = document.createElement('span');
+        span.className = 'attn-badge ' + cls;
+        span.title = '하멈말 출석율';
+        span.textContent = rate + '%';
+        return span;
+      }
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -435,6 +449,11 @@
         trigger.setAttribute('data-real-name', realName || '');
         trigger.setAttribute('data-display', display);
         trigger.appendChild(document.createTextNode(display));
+        var badge = buildAttnBadge(memberId);
+        if (badge) {
+          trigger.appendChild(document.createTextNode(' '));
+          trigger.appendChild(badge);
+        }
         var tag = document.createElement('span');
         trigger.appendChild(document.createTextNode(' '));
         if (hintText) {
@@ -482,6 +501,11 @@
 
         var span = document.createElement('span');
         span.appendChild(document.createTextNode('✅ ' + display));
+        var badge = buildAttnBadge(memberId);
+        if (badge) {
+          span.appendChild(document.createTextNode(' '));
+          span.appendChild(badge);
+        }
         if (rawText) {
           span.appendChild(document.createTextNode(' '));
           var rawSpan = document.createElement('span');
@@ -545,7 +569,7 @@
               return;
             }
             removeUnmatchedRow(teamEl, memberId);
-            addMatchedRow(teamEl, team, memberId, display, null);
+            addMatchedRow(teamEl, team, memberId, display, data.known_raw || null);
           })
           .catch(function () {
             showInfoModal('네트워크 오류로 저장하지 못했습니다.');
