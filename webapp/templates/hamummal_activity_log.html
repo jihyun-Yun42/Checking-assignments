@@ -52,7 +52,7 @@
   <p class="hint"><a href="{{ url_for('hamummal_upload') }}">← 하멈말 관리로 돌아가기</a></p>
 
   <form class="filter-form" method="get" action="{{ url_for('hamummal_upload_activity_log') }}">
-    <input type="text" name="team" placeholder="조 이름으로 필터 (예: 준타조)" value="{{ team }}">
+    <input type="text" name="team" placeholder="조 이름으로 필터 (예:달리조)" value="{{ team }}">
     <select name="event_type">
       <option value="" {{ 'selected' if not event_type else '' }}>전체</option>
       <option value="view" {{ 'selected' if event_type == 'view' else '' }}>조회만</option>
