@@ -20,7 +20,14 @@ _conn = None
 
 
 def _connect():
-    conn = psycopg2.connect(config.DATABASE_URL)
+    conn = psycopg2.connect(
+        config.DATABASE_URL,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
+        connect_timeout=10,
+    )
     conn.autocommit = True
     return conn
 
@@ -38,6 +45,12 @@ def _query(sql, params=None, fetch="all"):
 
     커넥션이 유휴 상태로 끊겨 있으면(풀러가 오래된 연결을 정리하는 경우 등) 한 번
     재연결해서 다시 시도한다.
+
+    "연결이 끊김" 상황은 psycopg2.OperationalError로만 오는 게 아니라
+    (버전/상황에 따라) psycopg2.DatabaseError나 InterfaceError로도 올 수 있어서
+    (예: "server closed the connection unexpectedly"가 DatabaseError로 올라오는
+    경우), 재연결 대상 예외를 psycopg2.Error 전체로 넓혀서 어떤 형태로 와도
+    한 번은 재연결 후 재시도한다.
     """
     global _conn
     last_err = None
@@ -52,7 +65,7 @@ def _query(sql, params=None, fetch="all"):
                     row = cur.fetchone()
                     return dict(row) if row else None
                 return None
-        except psycopg2.OperationalError as e:
+        except psycopg2.Error as e:
             last_err = e
             _conn = None
             if attempt == 2:
