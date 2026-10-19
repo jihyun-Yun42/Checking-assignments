@@ -689,7 +689,28 @@ def hamummal_review(review_id):
 
     full_review = data["review"]
     if my_team not in full_review:
-        return f"이 검토에는 '{my_team}'의 데이터가 없어요. 조장/부조장 번호가 시트에 등록돼 있는지 확인해주세요.", 404
+        # 업로드 당시엔 우리 조 조장/부조장이 아직 이 웹앱에 가입 전이라서
+        # 통째로 빠졌을 수 있다 — 그 날짜 제출자 목록 자체는 이미 DB에 저장돼
+        # 있으니(chat_senders/all_chat_senders), 지금 시점 기준으로 우리 조
+        # 현황판과 다시 매칭해본다. 조장/부조장이 그 사이에 가입했다면 바로
+        # 결과가 나오고, 다음부터는 저장해둬서 다시 계산할 필요가 없다.
+        members = db_client.active_members_by_team().get(my_team) or []
+        live_entry = hamummal_dashboard.compute_team_entry(
+            my_team, members, data["check_date"],
+            data.get("chat_senders") or [], data.get("all_chat_senders") or [],
+        )
+        if live_entry is None:
+            return (
+                f"이 검토에는 '{my_team}'의 데이터가 없어요. "
+                "우리 조 조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어서, "
+                "현황판을 불러올 수가 없어요. 조장 또는 부조장이 로그인한 뒤 다시 들어와 주세요.",
+                404,
+            )
+        full_review[my_team] = live_entry
+        try:
+            db_client.update_review_team_entry(review_id, my_team, live_entry)
+        except Exception:
+            pass  # 화면엔 바로 반영하고, 저장은 실패해도 다음에 다시 시도하면 됨
 
     entry = full_review[my_team]
 

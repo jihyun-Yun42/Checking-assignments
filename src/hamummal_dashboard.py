@@ -1,6 +1,82 @@
 from . import db_client, leader_dashboard_client, hamummal_parser, hamummal_matcher
 
 
+def compute_team_entry(
+    team: str, members: list, check_date_str: str, submitters, all_submitters, submission_times: dict = None,
+) -> dict:
+    """
+    한 조(team)만 콕 집어서, 그 조 조장/부조장 번호로 소리튠에 로그인해 현황판을
+    받아오고 제출자 목록(submitters)과 매칭한 결과를 돌려준다.
+
+    업로드 시점(compute_review)뿐 아니라, 업로드 당시엔 조장/부조장이 아직 이
+    웹앱에 가입 전이라 통째로 빠졌던 조를, 나중에 그 조장/부조장이 가입한 뒤
+    조원이 결과확인 페이지를 열어볼 때 그 자리에서(lazily) 계산할 때도 쓴다 —
+    submitters/all_submitters는 그 날짜 업로드 시점에 이미 뽑아서 DB에 저장해둔
+    chat_senders/all_chat_senders를 그대로 넘기면 되므로, 카카오톡 원본 파일이
+    없어도(업로드 요청이 끝나면 바로 지워버리므로) 다시 계산할 수 있다. 다만 그
+    경우엔 메시지별 정확한 전송시각(submission_times)까지는 남아있지 않아서
+    "_submitted_at"은 빈 채로 나간다.
+
+    조장/부조장이 단 한 명도 이 웹앱에 가입한 적 없으면(members 안에 역할·
+    번호를 가진 사람이 아예 없으면) None을 돌려준다 — 이건 이 함수가 뭘 어떻게
+    해도 해결할 수 없는, 진짜로 "아직 아무도 가입 안 한" 경우라서 호출한 쪽에서
+    구분해서 안내해야 한다.
+    """
+    leader_like = [
+        m for m in (members or [])
+        if m.get("역할") in ("조장", "부조장") and m.get("휴대폰번호")
+    ]
+    if not leader_like:
+        return None
+
+    session = admin_info = login_phone = None
+    last_error = None
+    for m in leader_like:
+        phone = m.get("휴대폰번호")
+        try:
+            session, admin_info = leader_dashboard_client.login(phone)
+            login_phone = phone
+            break
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    if not session:
+        return {
+            "matched": [], "unmatched_members": [], "ambiguous": [],
+            "error": last_error or "가입된 번호로 로그인하지 못했습니다.", "_phone": None,
+        }
+
+    try:
+        board = leader_dashboard_client.fetch_status_board(
+            session, admin_info["cohort_id"], check_date_str, admin_info["group_id"]
+        )
+    except Exception as e:
+        return {
+            "matched": [], "unmatched_members": [], "ambiguous": [],
+            "error": str(e), "_phone": login_phone,
+        }
+
+    confirmed_rows = db_client.get_confirmed_matches(team)
+    display_name_overrides = db_client.get_display_name_overrides(team)
+    match = hamummal_matcher.match_submitters(
+        submitters,
+        board.get("members") or [],
+        confirmed_rows=confirmed_rows,
+        display_name_overrides=display_name_overrides,
+        all_chat_senders=sorted(all_submitters),
+    )
+    submission_times = submission_times or {}
+    for m in match["matched"]:
+        raw = m.get("_matched_raw")
+        ts = submission_times.get(raw)
+        if ts:
+            m["_submitted_at"] = hamummal_parser.format_submission_time(ts)
+    match["error"] = None
+    match["_phone"] = login_phone
+    return match
+
+
 def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
     # "제출자 목록에 몇 시에 제출했는지" 표시용 — 판정(제출했는지 자체)에는
@@ -13,60 +89,9 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
 
     result = {}
     for team, members in db_client.active_members_by_team().items():
-        leader_like = [
-            m for m in members
-            if m.get("역할") in ("조장", "부조장") and m.get("휴대폰번호")
-        ]
-        if not leader_like:
-            continue
-
-        session = admin_info = login_phone = None
-        last_error = None
-        for m in leader_like:
-            phone = m.get("휴대폰번호")
-            try:
-                session, admin_info = leader_dashboard_client.login(phone)
-                login_phone = phone
-                break
-            except Exception as e:
-                last_error = str(e)
-                continue
-
-        if not session:
-            result[team] = {
-                "matched": [], "unmatched_members": [], "ambiguous": [],
-                "error": last_error or "가입된 번호로 로그인하지 못했습니다.", "_phone": None,
-            }
-            continue
-
-        try:
-            board = leader_dashboard_client.fetch_status_board(
-                session, admin_info["cohort_id"], check_date_str, admin_info["group_id"]
-            )
-        except Exception as e:
-            result[team] = {
-                "matched": [], "unmatched_members": [], "ambiguous": [],
-                "error": str(e), "_phone": login_phone,
-            }
-            continue
-
-        confirmed_rows = db_client.get_confirmed_matches(team)
-        display_name_overrides = db_client.get_display_name_overrides(team)
-        match = hamummal_matcher.match_submitters(
-            submitters,
-            board.get("members") or [],
-            confirmed_rows=confirmed_rows,
-            display_name_overrides=display_name_overrides,
-            all_chat_senders=sorted(all_submitters),
-        )
-        for m in match["matched"]:
-            raw = m.get("_matched_raw")
-            ts = submission_times.get(raw)
-            if ts:
-                m["_submitted_at"] = hamummal_parser.format_submission_time(ts)
-        match["error"] = None
-        match["_phone"] = login_phone
-        result[team] = match
+        entry = compute_team_entry(team, members, check_date_str, submitters, all_submitters, submission_times)
+        if entry is not None:
+            result[team] = entry
 
     return {
         "teams": result,
