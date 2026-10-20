@@ -17,13 +17,19 @@ _SURNAME_STOPWORDS = {
 }
 
 
-def _normalize_tokens(s: str) -> set:
+def _normalize_tokens(s: str, protect: frozenset = frozenset()) -> set:
+    """
+    protect: 성씨 로마자 표기와 우연히 겹치는 조원 닉네임(예: "Min", "Ha")이
+    통째로 걸러지는 걸 막기 위해, 이번 매칭 과정에서는 "잡음"으로 치지 않을
+    단어들. match_submitters가 조원 명단에서 뽑아서 모든 토큰화 호출에
+    똑같이 넘겨준다 — 그래야 원문 쪽과 조원 쪽이 같은 기준으로 비교된다.
+    """
     if not s:
         return set()
     s = _NOISE_RE.sub(" ", s)
     parts = re.split(r"[_\-ㅡ/／,\s]+", s)
     tokens = {p.lower() for p in parts if p}
-    return tokens - _SURNAME_STOPWORDS
+    return tokens - (_SURNAME_STOPWORDS - protect)
 
 
 def _strip_round(raw: str):
@@ -34,12 +40,12 @@ def _strip_round(raw: str):
     return body, None
 
 
-def _confirmed_key_map(confirmed_rows) -> dict:
+def _confirmed_key_map(confirmed_rows, protect: frozenset = frozenset()) -> dict:
     result = {}
     for row in confirmed_rows or []:
         raw = row.get("카카오표시이름") or ""
         body, _ = _strip_round(raw)
-        key = frozenset(_normalize_tokens(body))
+        key = frozenset(_normalize_tokens(body, protect=protect))
         if key:
             result[key] = str(row.get("member_id"))
     return result
@@ -49,10 +55,22 @@ def match_submitters(
     kakao_raw_names, dashboard_members: list, confirmed_rows=None, display_name_overrides=None,
     all_chat_senders=None,
 ) -> dict:
+    # 성씨 로마자 표기 목록(_SURNAME_STOPWORDS)은 원래 "박민수" 같은 원문에서
+    # 성(姓) 부분을 잡음으로 걸러내려는 용도인데, 조원 닉네임이 우연히 그
+    # 목록과 겹치면(예: 닉네임이 "Min", "Ha") 그 닉네임 전체가 통째로 걸러져서
+    # 그 조원만 영영 매칭이 안 되는 문제가 있었다. 그래서 실제로 등록된 조원
+    # 닉네임 단어들은 이 매칭 과정 전체에서 성씨 필터링 대상에서 빼준다.
+    protected_words = set()
+    for m in dashboard_members:
+        for part in re.split(r"[_\-ㅡ/／,\s]+", m.get("nickname") or ""):
+            if part:
+                protected_words.add(part.lower())
+    protect = frozenset(protected_words)
+
     parsed = []
     for raw in kakao_raw_names:
         body, _round_num = _strip_round(raw)
-        tokens = _normalize_tokens(body)
+        tokens = _normalize_tokens(body, protect=protect)
         if tokens:
             parsed.append({"raw": raw, "tokens": tokens})
 
@@ -60,17 +78,17 @@ def match_submitters(
     # 문자열로 돌아오기 때문에 여기서 통일하지 않으면 확정매칭 조회가 조용히 실패한다).
     member_meta = {}
     for m in dashboard_members:
-        name_tokens = _normalize_tokens(m.get("real_name") or "")
+        name_tokens = _normalize_tokens(m.get("real_name") or "", protect=protect)
         override = (display_name_overrides or {}).get(str(m.get("id")))
         if override:
-            name_tokens = name_tokens | _normalize_tokens(override)
+            name_tokens = name_tokens | _normalize_tokens(override, protect=protect)
         member_meta[str(m["id"])] = {
             "member": m,
-            "nick_tokens": _normalize_tokens(m.get("nickname") or ""),
+            "nick_tokens": _normalize_tokens(m.get("nickname") or "", protect=protect),
             "name_tokens": name_tokens,
         }
 
-    confirmed_map = _confirmed_key_map(confirmed_rows)
+    confirmed_map = _confirmed_key_map(confirmed_rows, protect=protect)
 
     matched_ids = set()
     ambiguous = []
@@ -128,9 +146,19 @@ def match_submitters(
     all_tokens_cache = []
     for raw in (all_chat_senders or []):
         body, _ = _strip_round(raw)
-        raw_tokens = _normalize_tokens(body)
+        raw_tokens = _normalize_tokens(body, protect=protect)
         if raw_tokens:
             all_tokens_cache.append((raw, raw_tokens))
+
+    # 동명이인(같은 실명 토큰을 가진 조원이 2명 이상) 여부를 미리 파악해둔다.
+    # 동명이인인 경우, 실명만 겹치는 원문(raw)은 둘 중 누구 건지 알 수 없으니
+    # "식별된 적 있음" 힌트로 함부로 쓰면 안 되고, 반드시 닉네임까지 겹쳐야
+    # 그 사람이라고 확신할 수 있다.
+    name_token_counts = {}
+    for meta in member_meta.values():
+        key = frozenset(meta["name_tokens"])
+        if key:
+            name_token_counts[key] = name_token_counts.get(key, 0) + 1
 
     unmatched_members = []
     for mid, meta in member_meta.items():
@@ -140,7 +168,10 @@ def match_submitters(
         if all_tokens_cache:
             nick_tokens = meta["nick_tokens"]
             name_tokens = meta["name_tokens"]
+            has_namesake = name_token_counts.get(frozenset(name_tokens), 0) > 1
             if nick_tokens or name_tokens:
+                nick_matched_raw = None
+                name_only_fallback_raw = None
                 for raw, raw_tokens in all_tokens_cache:
                     nick_hit = bool(raw_tokens & nick_tokens)
                     name_hit = bool(raw_tokens & name_tokens)
@@ -153,8 +184,22 @@ def match_submitters(
                         leftover = raw_tokens - nick_tokens
                         if leftover:
                             continue
-                    member["_known_raw"] = raw
-                    break
+                    if nick_hit:
+                        # 닉네임까지 겹치는 원문은 그 사람이 거의 확실하니
+                        # 바로 채택하고 더 찾지 않는다.
+                        nick_matched_raw = raw
+                        break
+                    # 여기부턴 실명만 겹치고 닉네임은 안 겹치는 경우. 동명이인이
+                    # 있으면 이 원문이 둘 중 누구 건지 알 수 없으니(예: "김민경"
+                    # 이라는 이름을 가진 조원이 2명이면, "김민경_Lucy"라는 원문을
+                    # 닉네임이 다른 "김민경_Min"에게 잘못 붙이면 안 된다) 힌트로
+                    # 쓰지 않는다. 동명이인이 없을 때만, 가장 먼저 찾은 걸
+                    # 후보로 남겨둔다.
+                    if not has_namesake and name_only_fallback_raw is None:
+                        name_only_fallback_raw = raw
+                resolved_raw = nick_matched_raw or name_only_fallback_raw
+                if resolved_raw:
+                    member["_known_raw"] = resolved_raw
         unmatched_members.append(member)
 
     return {"matched": matched, "unmatched_members": unmatched_members, "ambiguous": ambiguous}

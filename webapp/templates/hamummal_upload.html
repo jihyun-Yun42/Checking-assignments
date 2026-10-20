@@ -83,6 +83,25 @@
        z-index:50;max-width:88vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast.error{background:#c0392b}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+       align-items:center;justify-content:center;padding:20px;z-index:100}
+  .modal-overlay[hidden]{display:none}
+  .modal-box{background:#fff;border-radius:14px;padding:20px;max-width:380px;width:100%;
+       box-shadow:0 10px 30px rgba(0,0,0,.2);position:relative;box-sizing:border-box}
+  .modal-close-x{position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;
+       background:none;color:#999;font-size:16px;line-height:1;cursor:pointer;border-radius:50%;
+       display:flex;align-items:center;justify-content:center;padding:0;margin:0}
+  .modal-close-x:hover{background:#f2f2f2;color:#333}
+  .modal-title{font-size:16px;font-weight:bold;margin:0 0 8px;color:#222}
+  .modal-desc{font-size:13px;color:#666;line-height:1.5;margin:0 0 14px;white-space:pre-line}
+  .modal-pw-input{width:100%;padding:10px;font-size:16px;margin-bottom:16px;
+       border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px}
+  .modal-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:bold;
+       cursor:pointer;width:auto;margin:0}
+  .modal-btn-cancel{background:#eee;color:#333}
+  .modal-btn-save{background:#c0392b;color:#fff}
 </style>
 </head>
 <body>
@@ -190,6 +209,19 @@
 
   <div class="toast" id="toast"></div>
 
+  <div class="modal-overlay" id="danger-confirm-modal" hidden>
+    <div class="modal-box">
+      <button type="button" class="modal-close-x" id="danger-confirm-close" aria-label="닫기">✕</button>
+      <p class="modal-title">관리자 비밀번호 확인</p>
+      <p class="modal-desc" id="danger-confirm-desc"></p>
+      <input type="password" class="modal-pw-input" id="danger-confirm-pw" placeholder="관리자 비밀번호">
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="danger-confirm-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-save" id="danger-confirm-ok">확인하고 진행</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.getElementById('upload-form').addEventListener('submit', function () {
       var btn = document.getElementById('submit-btn');
@@ -241,14 +273,55 @@
       });
     })();
 
-    // 위험한 작업(전체삭제/매칭초기화/날짜별삭제) 버튼 전용 — 비밀번호를 팝업으로 물어보고
-    // 숨은 input에 채운 뒤에만 기존 확인창(confirm)을 띄운다.
-    window.__hamummalConfirmPw = function (form, confirmMsg) {
-      var pw = window.prompt('관리자 비밀번호를 입력해주세요.');
-      if (pw === null || pw === '') return false;
-      form.querySelector('input[name="password"]').value = pw;
-      return window.confirm(confirmMsg);
-    };
+    // 위험한 작업(전체삭제/매칭초기화/날짜별삭제) 버튼 전용 — 브라우저 기본
+    // prompt()/confirm() 대신, 비밀번호 입력과 확인 메시지를 한 번에 보여주는
+    // 자체 팝업(모달)을 띄우고, "확인하고 진행"을 눌러야만 실제로 제출한다.
+    (function () {
+      var modal = document.getElementById('danger-confirm-modal');
+      var desc = document.getElementById('danger-confirm-desc');
+      var pwInput = document.getElementById('danger-confirm-pw');
+      var okBtn = document.getElementById('danger-confirm-ok');
+      var cancelBtn = document.getElementById('danger-confirm-cancel');
+      var closeBtn = document.getElementById('danger-confirm-close');
+      var pendingForm = null;
+
+      function closeModal() {
+        modal.hidden = true;
+        pendingForm = null;
+        pwInput.value = '';
+      }
+
+      function openModal(form, confirmMsg) {
+        pendingForm = form;
+        desc.textContent = confirmMsg;
+        pwInput.value = '';
+        modal.hidden = false;
+        pwInput.focus();
+      }
+
+      okBtn.addEventListener('click', function () {
+        if (!pendingForm) return;
+        var pw = pwInput.value;
+        if (!pw) { pwInput.focus(); return; }
+        var form = pendingForm;
+        form.querySelector('input[name="password"]').value = pw;
+        closeModal();
+        form.submit();
+      });
+      pwInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); okBtn.click(); }
+      });
+      cancelBtn.addEventListener('click', closeModal);
+      closeBtn.addEventListener('click', closeModal);
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) closeModal();
+      });
+
+      window.__hamummalConfirmPw = function (form, confirmMsg) {
+        openModal(form, confirmMsg);
+        return false; // 폼의 기본 제출은 항상 막고, 모달에서 확인하면 그때 form.submit()으로 직접 보낸다.
+      };
+    })();
 
     (function () {
       var messages = [

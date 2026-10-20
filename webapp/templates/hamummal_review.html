@@ -461,8 +461,21 @@
       var fixnameCancel = document.getElementById('fixname-cancel');
       var fixnameTarget = null; // { mode, team, memberId, nickname, realName, display, row, teamEl }
 
+      // "(5회)"/"(5회차)"처럼 매주 바뀌는 회차 번호만 떼고 비교하기 위한 함수.
+      // 이름 고치기 검색 목록에서, 회차만 다를 뿐 사실은 이미 이번 날짜에
+      // 매칭된 사람을 "(매칭안됨)"으로 잘못 표시하지 않기 위해 쓴다.
+      function stripRoundSuffix(s) {
+        return (s || '').replace(/\(\s*\d+\s*회?\s*차?\s*\)\s*$/, '').trim();
+      }
+
       var matchedRawSet = {};
-      MATCHED_RAW_NAMES.forEach(function (n) { matchedRawSet[n] = true; });
+      MATCHED_RAW_NAMES.forEach(function (n) {
+        matchedRawSet[n] = true;
+        matchedRawSet[stripRoundSuffix(n)] = true;
+      });
+      function isAlreadyMatchedRaw(name) {
+        return !!(matchedRawSet[name] || matchedRawSet[stripRoundSuffix(name)]);
+      }
 
       function closeFixnameModal() {
         fixnameModal.hidden = true;
@@ -517,7 +530,7 @@
           nameSpan.textContent = name;
           item.appendChild(nameSpan);
 
-          if (!matchedRawSet[name]) {
+          if (!isAlreadyMatchedRaw(name)) {
             var tag = document.createElement('span');
             tag.className = 'unmatched-tag';
             tag.textContent = '(매칭안됨)';
