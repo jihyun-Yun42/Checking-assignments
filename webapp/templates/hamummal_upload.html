@@ -115,9 +115,7 @@
   {% endif %}
 
   <h2 class="section-h2">하멈말 대화 업로드</h2>
-  <p class="hint">카카오톡 대화 내보내기 파일(여러 날짜 포함 가능)을 올리면, 음성메시지를 20명 이상 보낸
-     날짜를 자동으로 찾아서 — 그 중 아래에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.
-     오늘({{ today_str }}) 진행 시간은 올리기 전에 바로 고칠 수 있어요.</p>
+  <p class="hint">카카오톡 대화 내보내기 파일을 올리면 조원 명단과 자동 매칭해줘요</p>
   <form method="post" enctype="multipart/form-data" id="upload-form">
     <div class="inline-time-row">
       <div>
@@ -139,8 +137,7 @@
   </form>
 
   <h2 class="section-h2">하멈말 진행 시간 설정</h2>
-  <p class="hint">실제로 분석된 날짜만 아래에 나와요. 업로드하면 날짜마다 저장된 시간(없으면
-     기본값 13:30~14:01)으로 자동 분석되고, 이 표에서 나중에 다시 와서 날짜별로 수정할 수 있어요.</p>
+  <p class="hint">날짜마다 저장된 시간으로 자동 분석되고, 나중에 다시 수정할 수 있어요.<br>(기본값 13:30~14:01)</p>
 
   {% if date_window_dates %}
     <details class="window-details">
@@ -164,8 +161,7 @@
   {% endif %}
 
   <h2 class="section-h2">⚠️ 하멈말 데이터 초기화</h2>
-  <p class="hint">기수가 끝나고 다음 기수를 시작할 때 쓰는 기능이에요. 한 번 지우면 되돌릴 수
-     없으니 신중하게 눌러주세요. 아래 버튼을 누르면 비밀번호를 물어봐요.</p>
+  <p class="hint">다음 기수를 시작할 때 쓰는 기능이에요. 비밀번호가 필요해요.</p>
 
   <div class="danger-box">
     <div class="danger-row">
