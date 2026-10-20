@@ -558,10 +558,23 @@ def hamummal_review_bulk_match_names():
     match = hamummal_matcher.match_submitters(raw_names, dashboard_members)
 
     matched_out = []
+    conflict_out = []
     consumed_raws = set()
     for m in match["matched"]:
         raw = m.get("_matched_raw")
         consumed_raws.add(raw)
+        # 이 원문이 이미 다른 조원에게 매칭된 적 있으면(실제 대화로 확인된
+        # 적 있거나, 예전에 수동/일괄로 저장해둔 적 있거나) 여기서 바로
+        # 덮어쓰지 않고 "중복 매칭 확인" 카드로 넘겨서 리더가 직접 확인하고
+        # 눌러야만 저장되게 한다 — 조원 매칭 현황의 수정 버튼과 똑같은 확인
+        # 절차를 여기서도 거치게 하기 위함.
+        conflict = _find_conflicting_auto_match(my_team, raw, m["id"])
+        if conflict is not None:
+            conflict_out.append({
+                "raw": raw, "member_id": m["id"], "display": _hamummal_display_name(m),
+                "conflict_display": _hamummal_display_name(conflict),
+            })
+            continue
         db_client.set_display_name_override(my_team, m["id"], raw)
         matched_out.append({
             "raw": raw, "member_id": m["id"], "display": _hamummal_display_name(m),
@@ -599,18 +612,22 @@ def hamummal_review_bulk_match_names():
         pass
 
     return jsonify(
-        ok=True, matched=matched_out, ambiguous=ambiguous_out, no_match=no_match, roster=roster_out,
+        ok=True, matched=matched_out, conflict=conflict_out, ambiguous=ambiguous_out,
+        no_match=no_match, roster=roster_out,
     )
 
 
 def _find_conflicting_auto_match(team: str, raw: str, exclude_member_id) -> dict:
     """
-    이 카카오 원문(raw)이 이미 "자동으로"(실제 제출 매칭, 또는 전체 대화에서
-    찾은 식별 힌트) 다른 조원에게 연결된 적 있는지 찾는다. "조원 이름 일괄
-    매칭"에서 리더가 오타 등으로 엉뚱한 사람을 수동으로 고를 뻔했을 때
-    경고해주기 위함이다. 실제 제출로 확인된 매칭(entry.matched)이 텍스트
-    식별 힌트(_known_raw)보다 더 확실하니 그쪽을 우선한다. 날짜 오름차순으로
-    훑으면서 계속 덮어쓰므로, 둘 다 있으면 가장 최근 값이 남는다.
+    이 카카오 원문(raw)이 이미 다른 조원에게 연결된 적 있는지 찾는다. "조원
+    이름 일괄 매칭"에서 리더가 오타 등으로 엉뚱한 사람을 수동으로 고를
+    뻔했을 때 경고해주기 위함이다. 실제 제출로 확인된 매칭(entry.matched)이
+    텍스트 식별 힌트(_known_raw)보다 더 확실하니 그쪽을 우선하고, 둘 다
+    없으면 이미 저장해둔 override(수동/일괄 매칭으로 예전에 등록한 값)까지
+    확인한다 — 실제 대화로 확인된 적은 없어도, 이미 다른 조원에게 같은
+    카톡 이름을 저장해둔 적이 있다면 그것도 충돌로 봐야 오타 실수를 막을 수
+    있다. 날짜 오름차순으로 훑으면서 계속 덮어쓰므로, 둘 다 있으면 가장
+    최근 값이 남는다.
     """
     exclude_member_id = str(exclude_member_id)
     matched_hit = None
@@ -623,7 +640,17 @@ def _find_conflicting_auto_match(team: str, raw: str, exclude_member_id) -> dict
         for m in entry.get("unmatched_members") or []:
             if m.get("_known_raw") == raw and str(m.get("id")) != exclude_member_id:
                 hint_hit = m
-    return matched_hit or hint_hit
+    if matched_hit or hint_hit:
+        return matched_hit or hint_hit
+
+    overrides = db_client.get_display_name_overrides(team)
+    for mid, oraw in (overrides or {}).items():
+        if oraw == raw and str(mid) != exclude_member_id:
+            roster = _current_team_roster(team)
+            override_member = next((m for m in roster if str(m.get("id")) == str(mid)), None)
+            if override_member:
+                return override_member
+    return None
 
 
 @app.route("/hamummal-review/bulk-match-resolve", methods=["POST"])

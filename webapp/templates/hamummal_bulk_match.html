@@ -38,6 +38,9 @@
   .bulk-sub{font-size:12px;color:#888;margin-top:4px}
   .bulk-sub.resolved-note{color:#0a7a2f;font-weight:bold}
   .bulk-candidates{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .bulk-candidates[hidden]{display:none}
+  .bulk-cand-btn-typo{border-color:#e0b4b4;color:#a33a3a}
+  .bulk-cand-btn-typo:hover{background:#fdeeee}
   .bulk-cand-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
        padding:5px 11px;font-size:12px;cursor:pointer;width:auto;margin:0}
   .bulk-cand-btn:hover{background:#fdf3dd}
@@ -108,7 +111,7 @@
 
   <div class="input-wrap">
     <div class="input-row">
-      <textarea id="bulk-match-input" rows="4" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
+      <textarea id="bulk-match-input" rows="2" placeholder="윤지현_Jenna, 박성수_Charlie, 이종길_Aaron&#10;또는 한 줄에 한 명씩"></textarea>
       <button type="button" id="bulk-match-run">매칭하기</button>
     </div>
     <div id="bulk-toast"></div>
@@ -240,7 +243,7 @@
       }
 
       function wireCandidateButtons() {
-        resultsEl.querySelectorAll('.bulk-cand-btn').forEach(function (btn) {
+        resultsEl.querySelectorAll('.bulk-cand-btn:not(.bulk-cand-btn-typo)').forEach(function (btn) {
           if (btn.dataset.wired) return;
           btn.dataset.wired = '1';
           btn.addEventListener('click', function (e) {
@@ -291,6 +294,21 @@
         });
       }
 
+      function wireTypoButtons() {
+        resultsEl.querySelectorAll('.bulk-cand-btn-typo').forEach(function (btn) {
+          if (btn.dataset.wired) return;
+          btn.dataset.wired = '1';
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var row = btn.closest('.bulk-row');
+            if (!row) return;
+            var sectionEl = row.closest('.bulk-section');
+            row.remove();
+            refreshSectionCount(sectionEl);
+          });
+        });
+      }
+
       function wireNoMatchTriggers() {
         resultsEl.querySelectorAll('.bulk-row.no-match').forEach(function (row) {
           if (row.dataset.wired) return;
@@ -305,8 +323,11 @@
               picker.innerHTML = lastRoster.map(function (m) {
                 return '<button type="button" class="bulk-cand-btn" data-member-id="' + m.member_id +
                   '" data-raw="' + escapeHtml(raw) + '">' + escapeHtml(m.display) + '</button>';
-              }).join('');
+              }).join('') +
+                '<button type="button" class="bulk-cand-btn bulk-cand-btn-typo" data-raw="' +
+                escapeHtml(raw) + '">잘못 입력했어요</button>';
               wireCandidateButtons();
+              wireTypoButtons();
             }
             picker.hidden = false;
           };
@@ -337,6 +358,20 @@
           });
           html += '</div></div>';
         }
+        if (data.conflict && data.conflict.length) {
+          html += '<div class="bulk-section" data-kind="conflict">' +
+            '<div class="bulk-section-title">⚠️ 중복 매칭 확인 (<span class="bulk-section-count">' + data.conflict.length + '</span>건)</div>' +
+            '<div class="bulk-section-rows">';
+          data.conflict.forEach(function (c) {
+            html += '<div class="bulk-row amb" data-raw="' + escapeHtml(c.raw) + '">"' + escapeHtml(c.raw) + '" → ' + escapeHtml(c.display) +
+              '<div class="bulk-sub">이미 \'' + escapeHtml(c.conflict_display) + '\'(으)로 매칭된 적 있어요. 그래도 저장하려면 눌러주세요.</div>' +
+              '<div class="bulk-candidates">' +
+              '<button type="button" class="bulk-cand-btn" data-member-id="' + c.member_id +
+              '" data-raw="' + escapeHtml(c.raw) + '">그래도 ' + escapeHtml(c.display) + '(으)로 저장</button>' +
+              '</div></div>';
+          });
+          html += '</div></div>';
+        }
         if (data.ambiguous && data.ambiguous.length) {
           html += '<div class="bulk-section" data-kind="amb">' +
             '<div class="bulk-section-title">⚠️ 확인 필요 (<span class="bulk-section-count">' + data.ambiguous.length + '</span>건)</div>' +
@@ -357,6 +392,21 @@
         wireNoMatchTriggers();
       }
 
+      // 엔터를 누르면 바로 매칭하기를 누른 것처럼 동작한다(여러 줄을 계속
+      // 입력하고 싶을 때는 Shift+Enter로 줄바꿈). 붙여넣기도 마찬가지로,
+      // 붙여넣은 내용이 실제로 입력칸에 반영된 다음 바로 매칭하기를 누른다
+      // (setTimeout으로 한 틱 미뤄야 paste 이벤트 시점에 값이 다 들어간다).
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        e.preventDefault();
+        if (!runBtn.disabled) runBtn.click();
+      });
+      input.addEventListener('paste', function () {
+        setTimeout(function () {
+          if (input.value.trim() && !runBtn.disabled) runBtn.click();
+        }, 0);
+      });
+
       runBtn.addEventListener('click', function () {
         var text = input.value.trim();
         if (!text) return;
@@ -375,7 +425,7 @@
             }
             renderResults(data);
             var autoCount = (data.matched || []).length;
-            var manualCount = (data.ambiguous || []).length + (data.no_match || []).length;
+            var manualCount = (data.conflict || []).length + (data.ambiguous || []).length + (data.no_match || []).length;
             showToast('자동매칭됨 ' + autoCount + '명 · 수동 매칭 필요 ' + manualCount + '명');
             input.value = '';
             loadRosterStatus();
