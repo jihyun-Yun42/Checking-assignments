@@ -125,6 +125,10 @@ def extract_all_submitters(txt_path: str) -> set:
     참가자 목록으로만 쓰고, 실제 매칭 판정(그 날짜에 정말 보냈는지)은 여전히
     날짜별로 window로 걸러낸 extract_submitters 결과로만 한다 — 그래야 진짜
     미제출인 날이 과거 이름만 보고 제출로 둔갑하는 일이 없다.
+
+    (참고: "전체 명단" 용도로는 더 넓게 잡는 extract_all_chat_participants를
+    대신 쓴다 — 이 함수는 더 쓰이지 않지만, 혹시 다른 곳에서 참조할까봐
+    남겨둔다.)
     """
     submitters = set()
     for ts, sender, content in _iter_messages(txt_path):
@@ -132,6 +136,58 @@ def extract_all_submitters(txt_path: str) -> set:
             continue
         submitters.add(sender)
     return submitters
+
+
+_ENTRY_RE = re.compile(r"^(?P<name>.+?)\s*님이\s*들어왔습니다\.?\s*$")
+_ENTRY_LINE_RE = re.compile(
+    r"^\d{4}년 \d{1,2}월 \d{1,2}일 (?:오전|오후) \d{1,2}:\d{2}[,:]\s*"
+    r"(?P<name>.+?)\s*님이\s*들어왔습니다\.?\s*$"
+)
+
+
+def extract_all_chat_participants(txt_path: str) -> set:
+    """
+    "전체 명단"용 — 날짜·시간대·하멈말 제출 여부와 상관없이, 업로드한 카카오톡
+    대화 파일 전체에서 한 번이라도 메시지를 보낸 사람 전부와, "OOO님이
+    들어왔습니다" 입장 알림에 등장한 사람 전부를 합친 집합을 돌려준다.
+
+    하멈말 때 한 번도 음성메시지/동영상을 보내지 않은 사람(텍스트로만 대화한
+    사람 등)도 "이름 고치기"/매칭 안 됨 힌트의 검색 대상에 포함시키기 위한
+    용도다. 실제 하멈말 제출 인정 판정에는 전혀 영향 없다(그건 여전히
+    extract_submitters만 쓴다).
+    """
+    participants = set()
+    with open(txt_path, encoding="utf-8-sig", newline="") as f:
+        first_line = f.readline()
+        f.seek(0)
+        header_cells = next(csv.reader([first_line]), [])
+        is_csv = [c.strip().lower() for c in header_cells[:3]] == ["date", "user", "message"]
+
+        if is_csv:
+            reader = csv.reader(f)
+            next(reader, None)  # 헤더 줄 건너뛰기
+            for row in reader:
+                if len(row) < 3:
+                    continue
+                sender, content = row[1].strip(), row[2]
+                m = _ENTRY_RE.match(content.strip())
+                if m:
+                    participants.add(m.group("name").strip())
+                elif sender:
+                    participants.add(sender)
+        else:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                m = LINE_PATTERN.match(line)
+                if m:
+                    participants.add(m.group("sender").strip())
+                    continue
+                m2 = _ENTRY_LINE_RE.match(line)
+                if m2:
+                    participants.add(m2.group("name").strip())
+    return participants
 
 
 def detect_candidate_dates(txt_path: str, min_senders: int = 20) -> list:

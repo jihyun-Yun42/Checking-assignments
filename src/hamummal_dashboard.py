@@ -89,10 +89,11 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
         sender: hamummal_parser.format_submission_time(ts)
         for sender, ts in hamummal_parser.extract_submission_times(txt_path, window_start, window_end).items()
     }
-    # "이름 고치기" 팝업 검색용 — 날짜/시간 상관없이 파일 전체에서 제출한 적
-    # 있는 모든 사람. 매칭 판정에는 안 쓰고(그건 위 submitters만 씀), 검색
-    # 목록을 넓혀주기 위해서만 쓴다.
-    all_submitters = hamummal_parser.extract_all_submitters(txt_path)
+    # "이름 고치기" 팝업 검색용 — 날짜/시간, 하멈말 제출 여부 상관없이 파일
+    # 전체에서 한 번이라도 메시지를 보냈거나 입장한 적 있는 모든 사람. 매칭
+    # 판정에는 안 쓰고(그건 위 submitters만 씀), 검색 목록을 넓혀주기 위해서만
+    # 쓴다(텍스트로만 대화하고 하멈말엔 참여 안 한 사람도 여기엔 포함돼야 함).
+    all_submitters = hamummal_parser.extract_all_chat_participants(txt_path)
 
     result = {}
     for team, members in db_client.active_members_by_team().items():
