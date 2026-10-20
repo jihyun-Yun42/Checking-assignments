@@ -1397,7 +1397,10 @@ def hamummal_review_apply(review_id):
                 )
             except Exception:
                 pass
-            return jsonify(ok=True, results={team: "마지막 반영 이후로 바뀐 내용이 없어요."})
+            return jsonify(
+                ok=True, results={team: "마지막 반영 이후로 바뀐 내용이 없어요."},
+                applied_at=format_kst_timestamp(prev_applied.get("applied_at")),
+            )
     else:
         # 반영 기록은 있지만(예전 버전이라) 그때 누굴 반영했는지 스냅샷이 없거나,
         # 아예 첫 반영인 경우 — 뭐가 바뀌었는지 정확히 알 수 없으니 이번 한 번은
@@ -1411,7 +1414,9 @@ def hamummal_review_apply(review_id):
         {team: entry}, check_date_str,
         add_ids_by_team={team: added_ids}, remove_ids_by_team={team: removed_ids},
     )
-    db_client.mark_review_team_applied(review_id, team, apply_results, matched_ids=sorted(current_matched_ids))
+    applied_at_iso = db_client.mark_review_team_applied(
+        review_id, team, apply_results, matched_ids=sorted(current_matched_ids),
+    )
     try:
         db_client.log_hamummal_activity(
             "apply", team, member, check_date_str, review_id,
@@ -1420,7 +1425,9 @@ def hamummal_review_apply(review_id):
     except Exception:
         pass  # 로그 적재 실패로 반영 자체(이미 끝남)가 실패로 보이면 안 됨
 
-    return jsonify(ok=True, results=apply_results)
+    # applied_at을 같이 내려주면, 화면이 새로고침 없이도 "✅ ... 기준
+    # 반영됐어요" 안내문을 바로 갱신할 수 있다.
+    return jsonify(ok=True, results=apply_results, applied_at=format_kst_timestamp(applied_at_iso))
 
 
 if __name__ == "__main__":

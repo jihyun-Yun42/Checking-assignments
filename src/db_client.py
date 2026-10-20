@@ -535,15 +535,19 @@ def delete_all_hamummal_matches() -> tuple:
     return len(overrides), len(confirmed)
 
 
-def mark_review_team_applied(review_id: str, team: str, apply_results: dict, matched_ids=None) -> None:
+def mark_review_team_applied(review_id: str, team: str, apply_results: dict, matched_ids=None) -> str:
     # 반영은 조별로 각자 진행하므로(조장마다 자기 조만 반영), 적용 여부도
     # 검토 전체가 아니라 조 단위로 기록한다. jsonb 병합 연산자(||)로
     # applied_teams 안의 해당 조 키만 갱신한다.
     # matched_ids: 이번에 반영한 시점의 제출자 id 스냅샷. 나중에 다시
     # "반영하기"를 누르면(이름 고치기/미제출 전환 등으로 바뀐 뒤) 이 스냅샷과
     # 비교해서 달라진 사람만 다시 소리튠에 반영한다.
+    # 반환값(applied_at)은 "반영하기" 성공 응답에 같이 실어서, 화면을
+    # 새로고침하지 않고도 "✅ ... 기준 반영됐어요" 안내문을 바로 갱신할 수
+    # 있게 하기 위함이다.
+    applied_at = now_kst().isoformat(timespec="seconds")
     payload = {
-        "applied_at": now_kst().isoformat(timespec="seconds"),
+        "applied_at": applied_at,
         "apply_results": apply_results,
         "matched_ids": [str(x) for x in (matched_ids or [])],
     }
@@ -556,6 +560,7 @@ def mark_review_team_applied(review_id: str, team: str, apply_results: dict, mat
         (team, json.dumps(payload, ensure_ascii=False), review_id),
         fetch="none",
     )
+    return applied_at
 
 
 def log_hamummal_activity(

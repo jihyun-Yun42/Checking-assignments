@@ -906,6 +906,23 @@
         modal.hidden = false;
       });
 
+      // 반영이 끝난 뒤, 그 다음부터 "달라진 사람만 다시 반영" 비교 기준이
+      // 될 수 있도록 맨 위 "✅ ... 기준 반영됐어요" 안내문을 새로고침 없이
+      // 바로 만들거나 갱신한다.
+      function markAppliedBanner(appliedAtText) {
+        var html = '✅ ' + escapeHtml(appliedAtText || '방금') + ' 기준 반영됐어요.<br>' +
+          '제출/미제출 변경 시 X표시나 체크(✓)표시를 누른 후 반영하기 버튼을 눌러주세요.';
+        var appliedP = document.querySelector('p.applied');
+        if (appliedP) {
+          appliedP.innerHTML = html;
+        } else {
+          appliedP = document.createElement('p');
+          appliedP.className = 'applied';
+          appliedP.innerHTML = html;
+          form.parentNode.insertBefore(appliedP, form);
+        }
+      }
+
       okBtn.addEventListener('click', function () {
         modal.hidden = true;
         submitBtn.disabled = true;
@@ -921,9 +938,16 @@
             var lines = Object.keys(data.results || {}).map(function (t) {
               return data.results[t];
             });
-            // 반영 직후엔 "마지막 반영" 기준(APPLIED_MATCHED_IDS 등)이 서버에서
-            // 바뀌었으니, 팝업을 닫을 때 새로고침해서 화면을 그 기준에 맞춘다.
-            showInfoModal(lines.join('\n') || '반영됐어요.', true);
+            // 새로고침하지 않고, 지금 화면을 바로 "반영됨" 상태로 바꾼다 —
+            // 다음 비교 기준(appliedMatchedSet)도 지금 화면의 제출자 명단으로
+            // 맞춰둬야 그 다음부터 또 바뀐 사람만 추적할 수 있다.
+            APPLIED = true;
+            APPLIED_HAD_SNAPSHOT = true;
+            appliedMatchedSet = {};
+            Object.keys(currentMatchedMap()).forEach(function (id) { appliedMatchedSet[id] = true; });
+            markAppliedBanner(data.applied_at);
+            updateSubmitButtonState();
+            showInfoModal(lines.join('\n') || '반영됐어요.');
           })
           .catch(function () {
             showInfoModal('네트워크 오류로 반영하지 못했습니다.');
