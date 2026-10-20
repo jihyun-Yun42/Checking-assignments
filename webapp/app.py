@@ -603,6 +603,29 @@ def hamummal_review_bulk_match_names():
     )
 
 
+def _find_conflicting_auto_match(team: str, raw: str, exclude_member_id) -> dict:
+    """
+    이 카카오 원문(raw)이 이미 "자동으로"(실제 제출 매칭, 또는 전체 대화에서
+    찾은 식별 힌트) 다른 조원에게 연결된 적 있는지 찾는다. "조원 이름 일괄
+    매칭"에서 리더가 오타 등으로 엉뚱한 사람을 수동으로 고를 뻔했을 때
+    경고해주기 위함이다. 실제 제출로 확인된 매칭(entry.matched)이 텍스트
+    식별 힌트(_known_raw)보다 더 확실하니 그쪽을 우선한다. 날짜 오름차순으로
+    훑으면서 계속 덮어쓰므로, 둘 다 있으면 가장 최근 값이 남는다.
+    """
+    exclude_member_id = str(exclude_member_id)
+    matched_hit = None
+    hint_hit = None
+    for row in db_client.list_team_reviews(team):
+        entry = (row.get("review") or {}).get(team) or {}
+        for m in entry.get("matched") or []:
+            if m.get("_matched_raw") == raw and str(m.get("id")) != exclude_member_id:
+                matched_hit = m
+        for m in entry.get("unmatched_members") or []:
+            if m.get("_known_raw") == raw and str(m.get("id")) != exclude_member_id:
+                hint_hit = m
+    return matched_hit or hint_hit
+
+
 @app.route("/hamummal-review/bulk-match-resolve", methods=["POST"])
 def hamummal_review_bulk_match_resolve():
     member = _current_member_or_none()
@@ -614,10 +637,22 @@ def hamummal_review_bulk_match_resolve():
     team = payload.get("team")
     member_id = payload.get("member_id")
     raw = str(payload.get("raw") or "").strip()
+    force = bool(payload.get("force"))
     if not (team and member_id and raw):
         return jsonify(ok=False, error="필수 값이 없습니다."), 400
     if str(team) != my_team:
         return jsonify(ok=False, error="본인 조만 수정할 수 있어요."), 403
+
+    if not force:
+        conflict = _find_conflicting_auto_match(team, raw, member_id)
+        if conflict is not None:
+            conflict_display = _hamummal_display_name(conflict)
+            return jsonify(
+                ok=False,
+                needs_confirm=True,
+                conflict_member={"id": conflict.get("id"), "display": conflict_display},
+                error=f"'{raw}'(은)는 이미 '{conflict_display}'(으)로 자동 매칭된 적 있어요. 그래도 저장할까요?",
+            )
 
     db_client.set_display_name_override(team, member_id, raw)
     fixed_dates = _retroactively_apply_other_dates(None, team, member_id, raw)
