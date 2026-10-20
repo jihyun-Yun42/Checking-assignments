@@ -645,29 +645,41 @@ def hamummal_review_roster_status():
 
     # override로 등록한 적 없어도, 실제 카톡 대화로 이미 자동 매칭된 사람이
     # 많다(이름/닉네임이 카톡 표시이름과 자연스럽게 겹치는 경우) — 그런 사람도
-    # "아직 매칭 안 됨"으로 잘못 분류되지 않도록, 가장 최근 분석된 날짜의
-    # 제출자 목록도 같이 확인한다.
+    # "아직 매칭 안 됨"으로 잘못 분류되지 않도록, 지금까지 분석된 모든 날짜를
+    # 같이 확인한다.
     # rows는 날짜 오름차순이라, 순서대로 덮어쓰면 사람별로 가장 최근 날짜의
-    # 자동 매칭 원문이 남는다 — 최근 분석에서 안 보인(그날 미제출인) 사람도
-    # 예전에 자동으로 식별된 적 있으면 그 값을 쓴다.
-    auto_matched = {}
+    # 값이 남는다 — 최근 분석에서 안 보인(그날 미제출인) 사람도 예전에 식별된
+    # 적 있으면 그 값을 쓴다.
+    #
+    # 두 가지 출처를 구분해서 둔다: submitted_matched(실제로 하멈말을 제출해서
+    # matched로 잡힌 적 있는 사람 — 가장 확실함)와 hint_matched(제출은 못 했어도
+    # 전체 대화에서 이름+닉네임이 겹치는 원문을 찾은 적 있는 사람 — "미제출
+    # 추정" 화면의 힌트와 같은 데이터). 둘 다 "식별은 된 사람"이므로 조원 매칭
+    # 현황에서는 매칭된 걸로 보여줘야 한다 — 제출 여부와 매칭(식별) 여부는
+    # 원래 별개다. 실제 제출로 확인된 쪽이 더 확실하니 그쪽을 우선한다.
+    submitted_matched = {}
+    hint_matched = {}
     rows = db_client.list_team_reviews(my_team)
     for row in rows:
         entry = (row.get("review") or {}).get(my_team) or {}
         for m in entry.get("matched") or []:
             raw = m.get("_matched_raw")
             if raw:
-                auto_matched[str(m.get("id"))] = raw
+                submitted_matched[str(m.get("id"))] = raw
+        for m in entry.get("unmatched_members") or []:
+            raw = m.get("_known_raw")
+            if raw:
+                hint_matched[str(m.get("id"))] = raw
 
     people = []
     for m in roster:
         mid = str(m.get("id"))
         override_raw = overrides.get(mid)
-        auto_raw = auto_matched.get(mid)
-        # 실제 대화로 식별된 자동 매칭이 있으면 그게 더 정확하다(이름/닉네임이
-        # 바뀌기 전에 일괄매칭으로 등록해둔 override가 오래돼서 틀어진 경우가
-        # 있다) — 자동 매칭을 우선으로 쓰고, 자동 매칭이 아예 없는 사람만
-        # override로 보여준다.
+        auto_raw = submitted_matched.get(mid) or hint_matched.get(mid)
+        # 실제 대화로 식별된 자동 매칭(제출 또는 힌트)이 있으면 그게 더
+        # 정확하다(이름/닉네임이 바뀌기 전에 일괄매칭으로 등록해둔 override가
+        # 오래돼서 틀어진 경우가 있다) — 자동 매칭을 우선으로 쓰고, 자동
+        # 매칭이 아예 없는 사람만 override로 보여준다.
         matched_raw = auto_raw or override_raw
         people.append({
             "member_id": m.get("id"),
