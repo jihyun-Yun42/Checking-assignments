@@ -117,173 +117,44 @@
   .modal-btn-cancel{background:#eee;color:#333}
   .modal-btn-save{background:#3C1E1E;color:#fff}
   #info-modal-desc{white-space:pre-line}
+
+  .review-skeleton{padding:4px 0}
+  .skeleton-line,.skeleton-card{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
+       background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite;border-radius:8px}
+  .skeleton-line{height:16px;margin-bottom:10px;width:40%}
+  .skeleton-line.skeleton-title{height:22px;width:55%;margin-bottom:16px}
+  .skeleton-card{height:54px;margin-bottom:10px;border-radius:12px}
+  @keyframes skeleton-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 </style>
 </head>
 <body>
-  <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
-  <h1>하멈말 결과확인{% if is_today %} <span class="today-badge">오늘</span>{% endif %}</h1>
-  <p class="meta">{{ check_date_label }} (진행 시간 {{ window_desc_label }})<br>
-    {% if is_today %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 자동으로 저장됩니다.{% else %}아래에서 확인/체크 후 맨 아래 "소리튠 조장페이지에 반영하기"를 누르면 그 날짜로 반영됩니다.{% endif %}<br>
-    회색 글씨는 카카오톡 전체 소통방에서 사용 중인 이름이에요.</p>
-
-  {% if submitter_count == 0 %}
-    <p class="warn">⚠️ 업로드한 파일에서 이 날짜·시간대({{ check_date }} {{ window_desc }})에 해당하는 메시지를 하나도 찾지 못했어요.
-    아래 결과는 전부 미제출로 나올 수 있어요 — 업로드 화면에서 날짜/시간이 실제 대화 날짜와 맞는지 먼저 확인해보세요.</p>
-  {% endif %}
-
-  {% if applied %}
-    <p class="applied">✅ {{ applied_at }} 기준 반영됐어요.<br>
-    제출/미제출 변경 시 X표시나 체크(✓)표시를 누른 후 반영하기 버튼을 눌러주세요.</p>
-  {% endif %}
-
-  <form method="post" action="{{ url_for('hamummal_review_apply', review_id=review_id) }}" id="review-form">
-  {% for team, data in review.items() %}
-    <div class="team" data-team="{{ team }}">
-      <h2>{{ team }}</h2>
-      {% if data.error %}
-        <p class="err">⚠️ {{ data.error }}</p>
-      {% endif %}
-
-      <div class="section-title">제출자로 자동 확인됨 (<span class="matched-count">{{ data.matched|length }}</span>명) — 반영시 자동 체크됩니다</div>
-      <div class="matched-list">
-        {% for m in data.matched %}
-          <div class="row ok" data-member-id="{{ m.id }}">
-            <span>✅ {{ m | hname }}{% if m.get('_matched_raw') %} <span class="matched-raw fixname-trigger" role="button" tabindex="0" data-mode="matched" data-team="{{ team }}" data-member-id="{{ m.id }}" data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}" title="카카오톡 이름이 달라요 (눌러서 수정)">· {{ m.get('_matched_raw') }}</span>{% endif %}{% if m.get('_submitted_at') %} <span class="submit-time" title="제출 시각">{{ m.get('_submitted_at') }}</span>{% endif %}</span>
-            <button type="button" class="exclude-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-              data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-              title="실제로 제출 안 함 (눌러서 미제출로 변경)" aria-label="실제로 제출 안 함">✕</button>
-          </div>
-        {% endfor %}
-      </div>
-      {% if not data.matched %}<div class="row miss matched-empty">없음</div>{% endif %}
-
-      {% if data.ambiguous %}
-        <div class="amb-section">
-          <div class="section-title">확인 필요 (<span class="amb-count">{{ data.ambiguous|length }}</span>건)</div>
-          {% for amb in data.ambiguous %}
-            <div class="amb-card">
-              <div class="amb-raw-label">카톡에서 "<strong>{{ amb.raw }}</strong>" 이름으로 보낸 메시지가 있어요</div>
-              {% for c in amb.candidates %}
-                <div class="amb-candidate-row">
-                  <label class="cand">
-                    <input type="checkbox" name="extra__{{ team }}__{{ c.id }}"
-                      class="amb-checkbox"
-                      data-team="{{ team }}" data-member-id="{{ c.id }}"
-                      data-nickname="{{ c.nickname }}" data-real-name="{{ c.real_name }}"
-                      data-display="{{ c | hname }}"
-                      data-raw="{{ amb.raw }}">
-                    <strong>{{ c | hname }}</strong> 님이 보낸 메시지가 맞아요
-                  </label>
-                  <span class="amb-manual-trigger fixname-trigger" role="button" tabindex="0"
-                    data-mode="ambiguous" data-team="{{ team }}" data-member-id="{{ c.id }}"
-                    data-nickname="" data-real-name="" data-display="{{ c | hname }}">선택지에 없어요 · 직접 입력할게요</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      <div class="section-title">미제출 추정 (<span class="unmatched-count">{{ data.unmatched_members|length }}</span>명)</div>
-      <div class="unmatched-list">
-        {% for m in data.unmatched_members %}
-          {% set override_name = display_name_overrides.get(m.id | string) %}
-          {% set known_hint = override_name or m.get('_known_raw') %}
-          <div class="row miss" data-member-id="{{ m.id }}">
-            <span class="fixname-trigger" role="button" tabindex="0" data-mode="unmatched" data-team="{{ team }}" data-member-id="{{ m.id }}"
-              data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-              title="카카오톡 이름이 달라요 (눌러서 수정)">{{ m | hname }}
-              {% if known_hint %}<span class="override-hint" title="전체 소통방에서 식별된 적 있어요 — 이 날짜엔 메시지를 못 찾았어요">· {{ known_hint }}</span>{% else %}<span class="unmatched-tag">(매칭안됨)</span>{% endif %}</span>
-            <span class="row-actions">
-              <button type="button" class="mark-submitted-btn" data-team="{{ team }}" data-member-id="{{ m.id }}"
-                data-nickname="{{ m.nickname }}" data-real-name="{{ m.real_name }}" data-display="{{ m | hname }}"
-                title="사실 제출했어요" aria-label="사실 제출했어요">✓</button>
-            </span>
-          </div>
-        {% endfor %}
-      </div>
-      {% if not data.unmatched_members %}<div class="row miss unmatched-empty">없음</div>{% endif %}
-    </div>
-  {% endfor %}
-
-    <div class="toolbar">
-      <button type="submit"{{ '' if apply_enabled else ' disabled' }}>소리튠 조장페이지에 반영하기</button>
-      {% if applied %}
-        <p class="test-note">반영 이후 바뀐 내용이 있으면 이 버튼을 다시 눌러서 반영해주세요.</p>
-      {% elif not apply_enabled %}
-        <p class="test-note">지금은 반영 기능이 꺼져 있어요.</p>
-      {% endif %}
-    </div>
-  </form>
-
-  <div class="modal-overlay" id="confirm-apply-modal" hidden>
-    <div class="modal-box">
-      <button type="button" class="modal-close-x" id="confirm-apply-close" aria-label="닫기">✕</button>
-      <p class="modal-title">반영 확인</p>
-      <p class="modal-desc">아래 인원을 소리튠 조장페이지(boot.soritune.com)에 하멈말 제출완료로 반영합니다.
-        실제 점수에 반영됩니다. 명단을 한 번 더 확인해주세요.</p>
-      <div class="confirm-list" id="confirm-list"></div>
-      <div class="modal-actions">
-        <button type="button" class="modal-btn modal-btn-cancel" id="confirm-apply-cancel">취소</button>
-        <button type="button" class="modal-btn modal-btn-save" id="confirm-apply-ok">정말 반영하겠습니다</button>
-      </div>
-    </div>
+  <div class="review-skeleton" id="review-skeleton">
+    <div class="skeleton-line skeleton-title"></div>
+    <div class="skeleton-line" style="width:60%"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card" style="width:70%"></div>
   </div>
 
-  <div class="modal-overlay" id="fixname-modal" hidden>
-    <div class="modal-box">
-      <button type="button" class="modal-close-x" id="fixname-close" aria-label="닫기">✕</button>
-      <p class="modal-title">이름 고치기</p>
-      <p class="modal-desc">카카오톡 소통방에서 쓰는 이름(또는 닉네임)이 소리튠에 등록된 이름과 다를 경우
-        자동으로 매칭되지 않아요.<br>아래 목록은 제출 메시지를 보낸 사람들의 목록이에요.<br>목록에 이름이
-        보이지 않으면 직접 입력해서 저장해 주세요.</p>
-      <input type="text" id="fixname-search" placeholder="이름 검색" autocomplete="off">
-      <div class="fixname-list" id="fixname-list"></div>
-      <div class="modal-actions">
-        <button type="button" class="modal-btn modal-btn-cancel" id="fixname-cancel">취소</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="exclude-modal" hidden>
-    <div class="modal-box">
-      <button type="button" class="modal-close-x" id="exclude-close" aria-label="닫기">✕</button>
-      <p class="modal-title">미제출로 변경</p>
-      <p class="modal-desc" id="exclude-modal-desc"></p>
-      <div class="modal-actions">
-        <button type="button" class="modal-btn modal-btn-cancel" id="exclude-cancel">취소</button>
-        <button type="button" class="modal-btn modal-btn-save" id="exclude-ok">네, 미제출로 바꿀게요</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="info-modal" hidden>
-    <div class="modal-box">
-      <button type="button" class="modal-close-x" id="info-modal-close" aria-label="닫기">✕</button>
-      <p class="modal-title" id="info-modal-title">알림</p>
-      <p class="modal-desc" id="info-modal-desc"></p>
-      <div class="modal-actions">
-        <button type="button" class="modal-btn modal-btn-save" id="info-modal-ok">확인</button>
-      </div>
-    </div>
-  </div>
+  <div id="review-content" hidden></div>
 
   <script>
-    (function () {
-      var CONFIRM_MATCH_URL = {{ url_for('hamummal_review_confirm_match', review_id=review_id) | tojson }};
-      var UNCONFIRM_MATCH_URL = {{ url_for('hamummal_review_unconfirm_match', review_id=review_id) | tojson }};
-      var FIX_NAME_URL = {{ url_for('hamummal_review_fix_name', review_id=review_id) | tojson }};
-      var TOGGLE_SUBMISSION_URL = {{ url_for('hamummal_review_toggle_submission', review_id=review_id) | tojson }};
-      var CHAT_SENDERS = {{ chat_senders | tojson }};
-      var MATCHED_RAW_NAMES = {{ matched_raw_names | tojson }};
-      var APPLIED = {{ applied | tojson }};
-      var APPLIED_MATCHED_IDS = {{ applied_matched_ids | tojson }};
-      var APPLIED_HAD_SNAPSHOT = {{ applied_had_snapshot | tojson }};
+
+    window.__initReviewScripts = function (ctx) {
+      var CONFIRM_MATCH_URL = ctx.confirm_match_url;
+      var UNCONFIRM_MATCH_URL = ctx.unconfirm_match_url;
+      var FIX_NAME_URL = ctx.fix_name_url;
+      var TOGGLE_SUBMISSION_URL = ctx.toggle_submission_url;
+      var CHAT_SENDERS = ctx.chat_senders;
+      var MATCHED_RAW_NAMES = ctx.matched_raw_names;
+      var APPLIED = ctx.applied;
+      var APPLIED_MATCHED_IDS = ctx.applied_matched_ids;
+      var APPLIED_HAD_SNAPSHOT = ctx.applied_had_snapshot;
       // 한 번도 반영한 적 없어도, 서버가 소리튠 조장페이지를 직접 조회해서
       // 지금 화면이랑 이미 똑같다고 확인해준 경우 true. 이 경우 페이지가 처음
       // 뜬 시점의 제출자 목록을 기준선으로 삼아서(아래 liveBaselineMatchedSet),
       // 스냅샷이 있는 경우와 똑같은 방식으로 "달라진 게 있는지"를 계속 추적한다.
-      var LIVE_ALREADY_APPLIED = {{ live_already_applied | tojson }};
+      var LIVE_ALREADY_APPLIED = ctx.live_already_applied;
       var form = document.getElementById('review-form');
       var submitBtn = form.querySelector('button[type="submit"]');
       var modal = document.getElementById('confirm-apply-modal');
@@ -1057,6 +928,30 @@
       });
 
       updateSubmitButtonState();
+    };
+  
+    (function () {
+      var CONTENT_URL = {{ content_url | tojson }};
+      var skeleton = document.getElementById('review-skeleton');
+      var content = document.getElementById('review-content');
+
+      fetch(CONTENT_URL, { credentials: 'same-origin' })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            throw new Error(data.error || '결과를 불러오지 못했습니다.');
+          }
+          content.innerHTML = data.html;
+          skeleton.hidden = true;
+          content.hidden = false;
+          window.__initReviewScripts(data.ctx);
+        })
+        .catch(function (err) {
+          skeleton.innerHTML =
+            '<p style="color:#888;font-size:14px;padding:20px 0">' +
+            (err && err.message ? err.message : '결과를 불러오지 못했습니다. 새로고침 해주세요.') +
+            '</p>';
+        });
     })();
   </script>
 </body>

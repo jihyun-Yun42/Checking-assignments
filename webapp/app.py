@@ -748,11 +748,24 @@ def hamummal_review(review_id):
     member = _current_member_or_none(cohort)
     if not member:
         return redirect(url_for("phone_entry"))
+    return render_template(
+        "hamummal_review.html",
+        review_id=review_id,
+        content_url=url_for("hamummal_review_content", review_id=review_id),
+    )
+
+
+@app.route("/hamummal-review/<review_id>/content")
+def hamummal_review_content(review_id):
+    cohort = _active_cohort_or_none()
+    member = _current_member_or_none(cohort)
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요해요. 새로고침 후 다시 시도해주세요."), 401
     my_team = str(member.get("조"))
 
     data = db_client.load_review(review_id)
     if not data:
-        return "존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요.", 404
+        return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요."), 404
 
     full_review = data["review"]
     if my_team not in full_review:
@@ -769,12 +782,14 @@ def hamummal_review(review_id):
             data.get("submission_times") or {},
         )
         if live_entry is None:
-            return (
-                f"이 검토에는 '{my_team}'의 데이터가 없어요. "
-                "우리 조 조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어서, "
-                "현황판을 불러올 수가 없어요. 조장 또는 부조장이 로그인한 뒤 다시 들어와 주세요.",
-                404,
-            )
+            return jsonify(
+                ok=False,
+                error=(
+                    f"이 검토에는 '{my_team}'의 데이터가 없어요. "
+                    "우리 조 조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어서, "
+                    "현황판을 불러올 수가 없어요. 조장 또는 부조장이 로그인한 뒤 다시 들어와 주세요."
+                ),
+            ), 404
         full_review[my_team] = live_entry
         try:
             db_client.update_review_team_entry(review_id, my_team, live_entry)
@@ -839,8 +854,8 @@ def hamummal_review(review_id):
     except Exception:
         pass  # 로그 적재 실패로 결과확인 페이지 자체가 막히면 안 됨
 
-    return render_template(
-        "hamummal_review.html",
+    content_html = render_template(
+        "_hamummal_review_content.html",
         review_id=review_id,
         check_date=data["check_date"],
         check_date_label=check_date_label,
@@ -848,18 +863,29 @@ def hamummal_review(review_id):
         window_desc_label=window_desc_label,
         review={my_team: display_entry},
         submitter_count=data.get("submitter_count", 0),
-        chat_senders=all_chat_senders,
-        matched_raw_names=matched_raw_names,
         display_name_overrides=display_name_overrides,
         apply_enabled=apply_enabled,
         applied=bool(team_applied),
         applied_at=format_kst_timestamp(team_applied.get("applied_at")),
-        applied_matched_ids=applied_matched_ids,
-        applied_had_snapshot=applied_had_snapshot,
-        live_already_applied=live_already_applied,
         is_today=is_today,
     )
 
+    return jsonify(
+        ok=True,
+        html=content_html,
+        ctx={
+            "confirm_match_url": url_for("hamummal_review_confirm_match", review_id=review_id),
+            "unconfirm_match_url": url_for("hamummal_review_unconfirm_match", review_id=review_id),
+            "fix_name_url": url_for("hamummal_review_fix_name", review_id=review_id),
+            "toggle_submission_url": url_for("hamummal_review_toggle_submission", review_id=review_id),
+            "chat_senders": all_chat_senders,
+            "matched_raw_names": matched_raw_names,
+            "applied": bool(team_applied),
+            "applied_matched_ids": applied_matched_ids,
+            "applied_had_snapshot": applied_had_snapshot,
+            "live_already_applied": live_already_applied,
+        },
+    )
 
 def _purge_resolved_ambiguous(entry: dict) -> bool:
     """

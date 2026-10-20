@@ -25,17 +25,6 @@
        border:1px solid #e5dcc8;border-radius:999px;padding:6px 12px;cursor:pointer;
        text-decoration:none;display:inline-flex;align-items:center;gap:4px}
   .tool-link:hover{border-color:#3C1E1E}
-
-  .loading-overlay{position:fixed;inset:0;background:#fff;z-index:100;
-       display:flex;align-items:center;justify-content:center;padding:20px}
-  .loading-overlay[hidden]{display:none}
-  .skeleton-box{width:100%;max-width:440px}
-  .skeleton-line,.skeleton-card{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
-       background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite;border-radius:8px}
-  .skeleton-line{height:16px;margin-bottom:10px;width:40%}
-  .skeleton-line.skeleton-title{height:22px;width:55%;margin-bottom:16px}
-  .skeleton-card{height:54px;margin-bottom:10px;border-radius:12px}
-  @keyframes skeleton-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 </style>
 </head>
 <body>
@@ -58,28 +47,5 @@
   {% else %}
     <p class="empty">아직 업로드된 결과가 없어요.</p>
   {% endif %}
-
-  <div class="loading-overlay" id="loading-overlay" hidden>
-    <div class="skeleton-box">
-      <div class="skeleton-line skeleton-title"></div>
-      <div class="skeleton-line" style="width:60%"></div>
-      <div class="skeleton-card"></div>
-      <div class="skeleton-card"></div>
-      <div class="skeleton-card" style="width:70%"></div>
-    </div>
-  </div>
-
-  <script>
-    (function () {
-      var list = document.getElementById('date-list');
-      if (!list) return;
-      var overlay = document.getElementById('loading-overlay');
-      list.querySelectorAll('.date-link').forEach(function (a) {
-        a.addEventListener('click', function () {
-          overlay.hidden = false;
-        });
-      });
-    })();
-  </script>
 </body>
 </html>
