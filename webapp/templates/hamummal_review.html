@@ -931,7 +931,7 @@
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!data.ok) {
-              showInfoModal(data.error || '반영하지 못했습니다.');
+              showInfoModal(data.error || '반영하지 못했습니다. Jenna에게 문의주세요.');
               updateSubmitButtonState();
               return;
             }

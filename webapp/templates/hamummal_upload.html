@@ -141,7 +141,7 @@
 
   {% if date_window_dates %}
     <details class="window-details">
-      <summary>날짜별로 진행 시간 펼쳐서 보기/수정하기 ({{ date_window_dates|length }}개)</summary>
+      <summary>날짜별로 진행 시간 수정하기 ({{ date_window_dates|length }}개)</summary>
       <form method="post" action="{{ url_for('hamummal_upload_set_windows') }}" style="border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:12px">
         <table class="window-table">
           <thead><tr><th>날짜</th><th>시작 시각</th><th>종료 시각</th></tr></thead>
@@ -157,6 +157,25 @@
         </table>
         <button type="submit">진행 시간 저장</button>
       </form>
+    </details>
+  {% endif %}
+
+  {% if date_window_dates %}
+    <details class="window-details">
+      <summary>날짜별 분석 결과 삭제하기 ({{ date_window_dates|length }}개)</summary>
+      <div style="border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:4px 12px">
+        {% for row in date_window_dates %}
+          <div class="date-delete-row">
+            <span>{{ row.date }}</span>
+            <form method="post" action="{{ url_for('hamummal_upload_delete_date') }}" class="danger-form"
+              onsubmit="return window.__hamummalConfirmPw(this, '{{ row.date }} 날짜의 분석 결과를 지울까요?\n되돌릴 수 없어요.');">
+              <input type="hidden" name="date" value="{{ row.date }}">
+              <input type="hidden" name="password" value="">
+              <button type="submit" class="danger-btn small">삭제</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
     </details>
   {% endif %}
 
@@ -183,25 +202,6 @@
       </form>
     </div>
   </div>
-
-  {% if date_window_dates %}
-    <details class="window-details">
-      <summary>날짜별로 분석 결과만 따로 삭제하기 ({{ date_window_dates|length }}개)</summary>
-      <div style="border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:4px 12px">
-        {% for row in date_window_dates %}
-          <div class="date-delete-row">
-            <span>{{ row.date }}</span>
-            <form method="post" action="{{ url_for('hamummal_upload_delete_date') }}" class="danger-form"
-              onsubmit="return window.__hamummalConfirmPw(this, '{{ row.date }} 날짜의 분석 결과를 지울까요?\n되돌릴 수 없어요.');">
-              <input type="hidden" name="date" value="{{ row.date }}">
-              <input type="hidden" name="password" value="">
-              <button type="submit" class="danger-btn small">삭제</button>
-            </form>
-          </div>
-        {% endfor %}
-      </div>
-    </details>
-  {% endif %}
 
   <div class="toast" id="toast"></div>
 

@@ -31,7 +31,8 @@
   .bar-fill.low{background:#c0392b}
   .bar-fill.mid{background:#d9a441}
   .bar-fill.high{background:#0a7a2f}
-  .person-sub{font-size:12px;color:#999;margin-top:4px}
+  .person-stats{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .person-count{font-size:12px;color:#999}
   .empty{font-size:14px;color:#888;margin-top:20px}
 </style>
 </head>
@@ -48,10 +49,12 @@
       <div class="person">
         <div class="person-head">
           <span class="person-name">{{ p.member | hname }}</span>
-          <span class="person-rate {{ cls }}">{{ rate }}%</span>
+          <span class="person-stats">
+            <span class="person-count">{{ p.matched }}/{{ p.total }}일</span>
+            <span class="person-rate {{ cls }}">{{ rate }}%</span>
+          </span>
         </div>
         <div class="bar-track"><div class="bar-fill {{ cls }}" style="width:{{ rate }}%"></div></div>
-        <div class="person-sub">{{ p.matched }}/{{ p.total }}일 제출</div>
       </div>
     {% endfor %}
   {% else %}
