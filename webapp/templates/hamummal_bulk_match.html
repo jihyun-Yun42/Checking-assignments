@@ -100,6 +100,12 @@
        cursor:pointer;width:auto;margin:0}
   .modal-btn-cancel{background:#eee;color:#333}
   .modal-btn-save{background:#c0392b;color:#fff}
+
+  .skeleton-line,.skeleton-card{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
+       background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite;border-radius:8px}
+  .skeleton-line{height:14px;margin-bottom:10px;width:40%}
+  .skeleton-card{height:40px;margin-bottom:8px;border-radius:10px}
+  @keyframes skeleton-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 </style>
 </head>
 <body>
@@ -448,7 +454,11 @@
         // 그린다 — 매번 통째로 비웠다 채우면 목록 높이가 잠깐 줄어들면서
         // 스크롤이 맨 위로 튀어버리기 때문.
         if (!rosterStatusLoaded) {
-          statusEl.innerHTML = '<p class="bulk-empty">불러오는 중…</p>';
+          statusEl.innerHTML =
+            '<div class="skeleton-line" style="width:55%"></div>' +
+            '<div class="skeleton-card"></div>' +
+            '<div class="skeleton-card"></div>' +
+            '<div class="skeleton-card" style="width:75%"></div>';
         }
         fetch(ROSTER_STATUS_URL, { credentials: 'same-origin' })
           .then(function (res) { return res.json(); })
