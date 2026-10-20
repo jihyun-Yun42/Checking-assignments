@@ -71,9 +71,11 @@
   .date-delete-row:last-child{border-bottom:none}
   .date-delete-row form{margin:0}
 
-  h1.page-title{font-size:26px;margin-bottom:10px}
+  .page-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+       flex-wrap:wrap;margin-bottom:18px}
+  h1.page-title{font-size:26px;margin:0}
   .results-link-box{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;
-       margin-top:6px;margin-bottom:18px;padding:8px 14px;
+       padding:8px 14px;
        background:#f5f0e8;color:#3C1E1E;border:1px solid #e5dcc8;border-radius:10px;
        text-decoration:none;font-size:14px;font-weight:bold}
   .results-link-box:hover{border-color:#3C1E1E}
@@ -106,14 +108,15 @@
 </style>
 </head>
 <body>
-  <h1 class="page-title">하멈말 관리</h1>
-
-  {% if has_reviews %}
-    <a class="results-link-box" href="{{ url_for('hamummal_review_dates') }}">
-      📮 업로드된 결과 보기
-      <span class="sub">날짜별 결과확인 목록으로 이동</span>
-    </a>
-  {% endif %}
+  <div class="page-header">
+    <h1 class="page-title">하멈말 관리</h1>
+    {% if has_reviews %}
+      <a class="results-link-box" href="{{ url_for('hamummal_review_dates') }}">
+        📮 업로드된 결과 보기
+        <span class="sub">날짜별 결과확인 목록으로 이동</span>
+      </a>
+    {% endif %}
+  </div>
 
   <h2 class="section-h2">하멈말 대화 업로드</h2>
   <p class="hint">카카오톡 대화 내보내기 파일을 올리면 조원 명단과 자동 매칭해줘요</p>
