@@ -187,6 +187,10 @@ def extract_all_chat_participants(txt_path: str) -> set:
                 m2 = _ENTRY_LINE_RE.match(line)
                 if m2:
                     participants.add(m2.group("name").strip())
+
+    # "coach_"로 시작하는 이름(대소문자 무관)은 코치/봇 계정으로 보고
+    # "전체 명단"(이름 고치기 검색, 미제출 힌트 등)에서 제외한다.
+    participants = {p for p in participants if not p.lower().startswith("coach_")}
     return participants
 
 

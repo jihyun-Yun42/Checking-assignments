@@ -189,13 +189,14 @@ def match_submitters(
                         # 바로 채택하고 더 찾지 않는다.
                         nick_matched_raw = raw
                         break
-                    # 여기부턴 실명만 겹치고 닉네임은 안 겹치는 경우. 동명이인이
-                    # 있으면 이 원문이 둘 중 누구 건지 알 수 없으니(예: "김민경"
-                    # 이라는 이름을 가진 조원이 2명이면, "김민경_Lucy"라는 원문을
-                    # 닉네임이 다른 "김민경_Min"에게 잘못 붙이면 안 된다) 힌트로
-                    # 쓰지 않는다. 동명이인이 없을 때만, 가장 먼저 찾은 걸
-                    # 후보로 남겨둔다.
-                    if not has_namesake and name_only_fallback_raw is None:
+                    # 여기부턴 실명만 겹치고 닉네임은 안 겹치는 경우. 이 조원에게
+                    # 등록된 닉네임이 있다면(nick_tokens가 비어있지 않다면), 그
+                    # 닉네임과 다른 원문은 다른 사람일 수 있으니(예: 조원 닉네임은
+                    # "용진몽"인데 원문은 "Alan") 동명이인 여부와 상관없이 힌트로
+                    # 쓰지 않는다 — 실명만 보고 넘겨짚지 않는다. 등록된 닉네임이
+                    # 아예 없는 조원이고 동명이인도 없을 때만, 실명 단독 일치를
+                    # (가장 먼저 찾은 것으로) 힌트 후보로 남겨둔다.
+                    if not nick_tokens and not has_namesake and name_only_fallback_raw is None:
                         name_only_fallback_raw = raw
                 resolved_raw = nick_matched_raw or name_only_fallback_raw
                 if resolved_raw:
