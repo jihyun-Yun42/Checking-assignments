@@ -59,7 +59,7 @@ def _current_member_or_none(cohort=None):
 def phone_entry():
     if request.method == "GET":
         if session.get("phone"):
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("hamummal_review_dates"))
         return render_template("phone_entry.html")
 
     phone = db_client.normalize_phone(request.form.get("phone"))
@@ -77,7 +77,7 @@ def phone_entry():
     if existing:
         session.permanent = True
         session["phone"] = phone
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("hamummal_review_dates"))
 
     try:
         _, admin_info = leader_dashboard_client.login(phone)
@@ -103,7 +103,7 @@ def phone_entry():
     session.permanent = True
     session["phone"] = phone
     flash(f"{admin_info['name']}님, {admin_info['group_name']} · {admin_info['role']} 확인됐어요!", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("hamummal_review_dates"))
 
 
 @app.route("/dashboard")
@@ -117,7 +117,7 @@ def dashboard():
         session.pop("phone", None)
         return redirect(url_for("phone_entry"))
 
-    hamummal_visible = bool(cohort) and db_client.is_hamummal_review_visible(cohort)
+    hamummal_visible = bool(cohort)
     return render_template(
         "dashboard.html", member=member, hamummal_visible=hamummal_visible,
     )
@@ -198,49 +198,15 @@ def dashboard_rename():
     return jsonify(ok=True)
 
 
-@app.route("/hamummal-upload/login", methods=["POST"])
-def hamummal_upload_login():
-    password = request.form.get("password")
-    if password != config.UPLOAD_PASSWORD:
-        flash("비밀번호가 틀렸습니다.")
-        return redirect(url_for("hamummal_upload"))
-    session["hamummal_admin"] = True
-    return redirect(url_for("hamummal_upload"))
-
-
-@app.route("/hamummal-upload/toggle-visibility", methods=["POST"])
-def hamummal_upload_toggle_visibility():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
-    cohort = _active_cohort_or_none()
-    if not cohort:
-        return "지금은 진행 중인 기수가 없어요.", 403
-    want_visible = request.form.get("visible") == "1"
-    db_client.set_hamummal_review_visible(str(cohort.get("기수명")), want_visible)
-    return redirect(url_for("hamummal_upload"))
-
-
-@app.route("/hamummal-upload/toggle-apply", methods=["POST"])
-def hamummal_upload_toggle_apply():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
-    cohort = _active_cohort_or_none()
-    if not cohort:
-        return "지금은 진행 중인 기수가 없어요.", 403
-    want_enabled = request.form.get("enabled") == "1"
-    db_client.set_hamummal_apply_enabled(str(cohort.get("기수명")), want_enabled)
-    return redirect(url_for("hamummal_upload"))
-
-
 @app.route("/hamummal-upload/set-windows", methods=["POST"])
 def hamummal_upload_set_windows():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
     cohort = _active_cohort_or_none()
     if not cohort:
         return "지금은 진행 중인 기수가 없어요.", 403
     cohort_name = str(cohort.get("기수명"))
+    member = _current_member_or_none(cohort)
     saved = 0
+    changed = []
     for key in request.form:
         if not key.startswith("start__"):
             continue
@@ -250,37 +216,70 @@ def hamummal_upload_set_windows():
         if start_time and end_time:
             db_client.set_hamummal_date_window(cohort_name, date_str, start_time, end_time)
             saved += 1
+            changed.append({"date": date_str, "start": start_time, "end": end_time})
+    try:
+        db_client.log_hamummal_activity(
+            "windows_change", "(관리자)", member, detail={"changed": changed},
+        )
+    except Exception:
+        pass
     flash(f"{saved}개 날짜의 진행 시간을 저장했어요.", "success")
     return redirect(url_for("hamummal_upload"))
 
 
 @app.route("/hamummal-upload/reset-all-reviews", methods=["POST"])
 def hamummal_upload_reset_all_reviews():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
+    if request.form.get("password") != config.UPLOAD_PASSWORD:
+        flash("비밀번호가 틀렸습니다.")
+        return redirect(url_for("hamummal_upload"))
+    cohort = _active_cohort_or_none()
+    member = _current_member_or_none(cohort) if cohort else None
     n = db_client.delete_all_hamummal_reviews()
+    try:
+        db_client.log_hamummal_activity("reset_all", "(관리자)", member, detail={"deleted": n})
+    except Exception:
+        pass
     flash(f"하멈말 분석 데이터 {n}건을 전부 지웠어요.", "success")
     return redirect(url_for("hamummal_upload"))
 
 
 @app.route("/hamummal-upload/reset-matches", methods=["POST"])
 def hamummal_upload_reset_matches():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
+    if request.form.get("password") != config.UPLOAD_PASSWORD:
+        flash("비밀번호가 틀렸습니다.")
+        return redirect(url_for("hamummal_upload"))
+    cohort = _active_cohort_or_none()
+    member = _current_member_or_none(cohort) if cohort else None
     n_override, n_confirmed = db_client.delete_all_hamummal_matches()
+    try:
+        db_client.log_hamummal_activity(
+            "reset_matches", "(관리자)", member,
+            detail={"override_deleted": n_override, "confirmed_deleted": n_confirmed},
+        )
+    except Exception:
+        pass
     flash(f"조원 매칭 정보를 초기화했어요. (수동 등록 {n_override}건, 확인 완료 {n_confirmed}건)", "success")
     return redirect(url_for("hamummal_upload"))
 
 
 @app.route("/hamummal-upload/delete-date", methods=["POST"])
 def hamummal_upload_delete_date():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
+    if request.form.get("password") != config.UPLOAD_PASSWORD:
+        flash("비밀번호가 틀렸습니다.")
+        return redirect(url_for("hamummal_upload"))
     date_str = request.form.get("date")
     if not date_str:
         flash("삭제할 날짜가 없습니다.")
         return redirect(url_for("hamummal_upload"))
+    cohort = _active_cohort_or_none()
+    member = _current_member_or_none(cohort) if cohort else None
     n = db_client.delete_hamummal_review_date(date_str)
+    try:
+        db_client.log_hamummal_activity(
+            "delete_date", "(관리자)", member, check_date_str=date_str, detail={"deleted_rows": n},
+        )
+    except Exception:
+        pass
     if n:
         flash(f"{date_str} 날짜의 분석 결과를 지웠어요.", "success")
     else:
@@ -290,8 +289,6 @@ def hamummal_upload_delete_date():
 
 @app.route("/hamummal-upload/activity-log")
 def hamummal_upload_activity_log():
-    if not session.get("hamummal_admin"):
-        return "관리자 인증이 필요합니다.", 403
     team = (request.args.get("team") or "").strip() or None
     event_type = (request.args.get("event_type") or "").strip() or None
     logs = db_client.list_hamummal_activity_log(limit=300, team=team, event_type=event_type)
@@ -307,10 +304,8 @@ def hamummal_upload():
         return "지금은 진행 중인 기수가 없어요.", 403
 
     if request.method == "POST":
-        if not session.get("hamummal_admin"):
-            return "관리자 인증이 필요합니다.", 403
-
         cohort_name = str(cohort.get("기수명"))
+        member = _current_member_or_none(cohort)
         f = request.files["chat_file"]
 
         # 업로드 폼에 있는 "오늘 진행 시간"을 올리기 직전에 바로 고칠 수 있게
@@ -327,11 +322,21 @@ def hamummal_upload():
         os.close(tmp_fd)
         f.save(save_path)
 
+        # 카톡 대화 파일은 누적 파일이라(예전 대화 + 새 대화), 이미 분석해서
+        # 저장해둔 날짜를 매번 다시 분석하면 파일이 커질수록 점점 느려진다.
+        # 오늘 날짜만 빼고(오늘은 하루 중에도 계속 새로 제출될 수 있으니 항상
+        # 다시 분석), 이미 분석 기록이 있는 날짜는 건너뛴다.
+        already_analyzed = {row["check_date"] for row in db_client.list_review_dates()}
+
         try:
             candidate_dates = hamummal_parser.detect_candidate_dates(str(save_path))
             date_windows = db_client.get_hamummal_date_windows(cohort_name)
             processed = []
+            skipped = []
             for date_str in candidate_dates:
+                if date_str != today_str and date_str in already_analyzed:
+                    skipped.append(date_str)
+                    continue
                 # 이 날짜에 명시적으로 저장된 진행 시간이 없으면 기본값(13:30~14:01)으로
                 # 분석한다 — 화면에 기본값이 미리 채워져 있어도 "저장" 버튼을 따로
                 # 누르지 않으면 DB에는 그 값이 없어서, 예전에는 여기서 건너뛰고 있었다.
@@ -358,8 +363,29 @@ def hamummal_upload():
             except OSError:
                 pass
 
+        try:
+            db_client.log_hamummal_activity(
+                "upload", "(관리자)", member,
+                detail={
+                    "filename": f.filename,
+                    "today_window": (
+                        f"{today_start_time}~{today_end_time}"
+                        if today_start_time and today_end_time else None
+                    ),
+                    "processed_dates": processed,
+                    "skipped_dates": skipped,
+                },
+            )
+        except Exception:
+            pass
+
         if processed:
-            flash(f"{len(processed)}개 날짜 분석 완료: {', '.join(processed)}", "success")
+            msg = f"{len(processed)}개 날짜 분석 완료: {', '.join(processed)}"
+            if skipped:
+                msg += f" (이미 분석됐던 {len(skipped)}개 날짜는 건너뛰었어요)"
+            flash(msg, "success")
+        elif skipped:
+            flash(f"새로 분석할 날짜가 없었어요. (이미 분석됐던 {len(skipped)}개 날짜는 건너뛰었어요)")
         else:
             flash("음성메시지를 20명 이상 보낸 날짜를 찾지 못했어요.")
         return redirect(url_for("hamummal_upload"))
@@ -385,9 +411,6 @@ def hamummal_upload():
 
     return render_template(
         "hamummal_upload.html",
-        is_admin=bool(session.get("hamummal_admin")),
-        hamummal_review_visible=db_client.is_hamummal_review_visible(cohort),
-        hamummal_apply_enabled=db_client.is_hamummal_apply_enabled(cohort),
         date_window_dates=date_window_dates,
         has_reviews=db_client.has_any_review(),
         today_str=today_str,
@@ -415,6 +438,10 @@ def hamummal_review_bulk_match_page():
     member = _current_member_or_none()
     if not member:
         return redirect(url_for("phone_entry"))
+    try:
+        db_client.log_hamummal_activity("roster_view", str(member.get("조")), member)
+    except Exception:
+        pass
     return render_template("hamummal_bulk_match.html", team=str(member.get("조")))
 
 
@@ -465,6 +492,10 @@ def hamummal_review_attendance():
         return redirect(url_for("phone_entry"))
     my_team = str(member.get("조"))
     people, total_dates = _team_attendance(my_team)
+    try:
+        db_client.log_hamummal_activity("attendance_view", my_team, member)
+    except Exception:
+        pass
     return render_template(
         "hamummal_attendance.html", team=my_team, people=people, total_dates=total_dates,
     )
@@ -550,6 +581,14 @@ def hamummal_review_bulk_match_names():
         key=lambda r: r["display"],
     )
 
+    try:
+        db_client.log_hamummal_activity(
+            "roster_set", my_team, member,
+            detail={"matched": len(matched_out), "ambiguous": len(ambiguous_out), "no_match": len(no_match)},
+        )
+    except Exception:
+        pass
+
     return jsonify(
         ok=True, matched=matched_out, ambiguous=ambiguous_out, no_match=no_match, roster=roster_out,
     )
@@ -573,6 +612,12 @@ def hamummal_review_bulk_match_resolve():
 
     db_client.set_display_name_override(team, member_id, raw)
     fixed_dates = _retroactively_apply_other_dates(None, team, member_id, raw)
+    try:
+        db_client.log_hamummal_activity(
+            "roster_set", my_team, member, detail={"raw": raw, "member_id": member_id},
+        )
+    except Exception:
+        pass
     return jsonify(ok=True, fixed_dates=sorted(fixed_dates))
 
 
@@ -779,7 +824,7 @@ def hamummal_review(review_id):
     matched_for_display.sort(key=_submitted_at_minutes)
     display_entry = dict(entry, matched=matched_for_display)
 
-    apply_enabled = bool(cohort) and db_client.is_hamummal_apply_enabled(cohort)
+    apply_enabled = bool(cohort)
 
     # 한 번도 반영한 적 없는 경우(스냅샷 없음)에만, 소리튠 조장페이지에 실제로
     # 이미 지금 화면과 똑같이 체크돼 있는지 라이브로 확인한다. 반영한 적이 있으면
@@ -1203,8 +1248,8 @@ def hamummal_review_toggle_submission(review_id):
 @app.route("/hamummal-review/<review_id>/apply", methods=["POST"])
 def hamummal_review_apply(review_id):
     cohort = _active_cohort_or_none()
-    if not (cohort and db_client.is_hamummal_apply_enabled(cohort)):
-        return jsonify(ok=False, error="지금은 반영 기능이 꺼져 있어요. 관리자(하멈말 업로드 페이지)에서 켜야 사용할 수 있어요."), 403
+    if not cohort:
+        return jsonify(ok=False, error="지금은 진행 중인 기수가 없어요."), 403
     member = _current_member_or_none(cohort)
     if not member:
         return jsonify(ok=False, error="로그인이 필요합니다."), 401

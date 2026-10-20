@@ -70,56 +70,54 @@
        padding:8px 0;border-bottom:1px dashed #eee;font-size:13px}
   .date-delete-row:last-child{border-bottom:none}
   .date-delete-row form{margin:0}
+
+  h1.page-title{font-size:26px;margin-bottom:10px}
+  .results-link-box{display:block;margin-top:6px;margin-bottom:18px;padding:16px 18px;
+       background:#3C1E1E;color:#fff;border-radius:12px;text-decoration:none;
+       font-size:16px;font-weight:bold;text-align:center;box-shadow:0 3px 10px rgba(60,30,30,.25)}
+  .results-link-box:hover{background:#2c1515}
+  .results-link-box .sub{display:block;font-size:12px;font-weight:normal;color:#e8d9c8;margin-top:3px}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+       background:#222;color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;font-weight:bold;
+       box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;
+       z-index:50;max-width:88vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.error{background:#c0392b}
 </style>
 </head>
 <body>
-{% if not is_admin %}
-  <h1>하멈말 관리자 로그인</h1>
-  {% with msgs = get_flashed_messages() %}
-    {% if msgs %}<p class="flash">{{ msgs[0] }}</p>{% endif %}
-  {% endwith %}
-  <form method="post" action="{{ url_for('hamummal_upload_login') }}">
-    <label>비밀번호</label>
-    <input type="password" name="password" required autofocus>
-    <button type="submit">입장하기</button>
-  </form>
-{% else %}
-  <h1>하멈말 관리</h1>
-  {% with cat_messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in cat_messages %}
-      <p class="flash {{ 'success' if category == 'success' else '' }}">{{ message }}</p>
-    {% endfor %}
-  {% endwith %}
-
-  <div class="toggle-box">
-    <span class="status {{ 'on' if hamummal_review_visible else 'off' }}">
-      조장 대시보드에 결과확인 페이지 {{ '공개 중' if hamummal_review_visible else '비공개' }}
-    </span>
-    <form method="post" action="{{ url_for('hamummal_upload_toggle_visibility') }}" style="margin:0">
-      <input type="hidden" name="visible" value="{{ '0' if hamummal_review_visible else '1' }}">
-      <button type="submit" class="toggle-btn {{ '' if hamummal_review_visible else 'off' }}">
-        {{ '비공개로 전환' if hamummal_review_visible else '공개하기' }}
-      </button>
-    </form>
-  </div>
-
-  <div class="toggle-box">
-    <span class="status {{ 'on' if hamummal_apply_enabled else 'off' }}">
-      "소리튠 조장페이지에 반영하기" 버튼 {{ '켜짐' if hamummal_apply_enabled else '꺼짐' }}
-    </span>
-    <form method="post" action="{{ url_for('hamummal_upload_toggle_apply') }}" style="margin:0">
-      <input type="hidden" name="enabled" value="{{ '0' if hamummal_apply_enabled else '1' }}">
-      <button type="submit" class="toggle-btn {{ '' if hamummal_apply_enabled else 'off' }}">
-        {{ '끄기' if hamummal_apply_enabled else '켜기' }}
-      </button>
-    </form>
-  </div>
+  <h1 class="page-title">하멈말 관리</h1>
 
   {% if has_reviews %}
-    <p class="hint">업로드된 결과 보기 → <a href="{{ url_for('hamummal_review_dates') }}">날짜 목록</a></p>
+    <a class="results-link-box" href="{{ url_for('hamummal_review_dates') }}">
+      📮 업로드된 결과 보기
+      <span class="sub">날짜별 결과확인 목록으로 이동</span>
+    </a>
   {% endif %}
-  <p class="hint">누가 결과확인 페이지를 보고 반영하기를 눌렀는지 →
-    <a href="{{ url_for('hamummal_upload_activity_log') }}">사용 로그</a></p>
+
+  <h2 class="section-h2">하멈말 대화 업로드</h2>
+  <p class="hint">카카오톡 대화 내보내기 파일(여러 날짜 포함 가능)을 올리면, 음성메시지를 20명 이상 보낸
+     날짜를 자동으로 찾아서 — 그 중 아래에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.
+     오늘({{ today_str }}) 진행 시간은 올리기 전에 바로 고칠 수 있어요.</p>
+  <form method="post" enctype="multipart/form-data" id="upload-form">
+    <div class="inline-time-row">
+      <div>
+        <label>오늘 시작 시각</label>
+        <input type="time" name="today_start_time" value="{{ today_start_time }}">
+      </div>
+      <div>
+        <label>오늘 종료 시각</label>
+        <input type="time" name="today_end_time" value="{{ today_end_time }}">
+      </div>
+    </div>
+    <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
+    <div id="file-drop-zone" class="file-drop-zone">
+      <input type="file" name="chat_file" id="chat-file-input" accept=".txt,.csv" required>
+      <p class="file-drop-hint" id="file-drop-hint">파일을 여기로 끌어다 놓거나, 눌러서 선택하세요</p>
+      <p class="file-drop-name" id="file-drop-name" hidden></p>
+    </div>
+    <button type="submit" id="submit-btn">분석하기</button>
+  </form>
 
   <h2 class="section-h2">하멈말 진행 시간 설정</h2>
   <p class="hint">실제로 분석된 날짜만 아래에 나와요. 업로드하면 날짜마다 저장된 시간(없으면
@@ -146,48 +144,26 @@
     </details>
   {% endif %}
 
-  <h2 class="section-h2">하멈말 대화 업로드</h2>
-  <p class="hint">카카오톡 대화 내보내기 파일(여러 날짜 포함 가능)을 올리면, 음성메시지를 20명 이상 보낸
-     날짜를 자동으로 찾아서 — 그 중 위에서 진행 시간이 설정된 날짜만 — 조원 명단과 매칭해줘요.
-     오늘({{ today_str }}) 진행 시간은 아래에서 올리기 전에 바로 고칠 수 있어요.</p>
-  <form method="post" enctype="multipart/form-data" id="upload-form">
-    <div class="inline-time-row">
-      <div>
-        <label>오늘 시작 시각</label>
-        <input type="time" name="today_start_time" value="{{ today_start_time }}">
-      </div>
-      <div>
-        <label>오늘 종료 시각</label>
-        <input type="time" name="today_end_time" value="{{ today_end_time }}">
-      </div>
-    </div>
-    <label>카카오톡 대화 내보내기 파일 (.txt 또는 .csv)</label>
-    <div id="file-drop-zone" class="file-drop-zone">
-      <input type="file" name="chat_file" id="chat-file-input" accept=".txt,.csv" required>
-      <p class="file-drop-hint" id="file-drop-hint">파일을 여기로 끌어다 놓거나, 눌러서 선택하세요</p>
-      <p class="file-drop-name" id="file-drop-name" hidden></p>
-    </div>
-    <button type="submit" id="submit-btn">분석하기</button>
-  </form>
-
   <h2 class="section-h2">⚠️ 하멈말 데이터 초기화</h2>
   <p class="hint">기수가 끝나고 다음 기수를 시작할 때 쓰는 기능이에요. 한 번 지우면 되돌릴 수
-     없으니 신중하게 눌러주세요.</p>
+     없으니 신중하게 눌러주세요. 아래 버튼을 누르면 비밀번호를 물어봐요.</p>
 
   <div class="danger-box">
     <div class="danger-row">
       <span class="danger-label">하멈말 분석 데이터 전체 삭제<br>
         <span class="danger-desc">지금까지 업로드·분석된 모든 날짜의 결과를 전부 지워요.</span></span>
-      <form method="post" action="{{ url_for('hamummal_upload_reset_all_reviews') }}"
-        onsubmit="return confirm('정말로 하멈말 분석 데이터를 전부 지울까요?\n업로드된 모든 날짜의 결과가 사라지고 되돌릴 수 없어요.');">
+      <form method="post" action="{{ url_for('hamummal_upload_reset_all_reviews') }}" class="danger-form"
+        onsubmit="return window.__hamummalConfirmPw(this, '정말로 하멈말 분석 데이터를 전부 지울까요?\n업로드된 모든 날짜의 결과가 사라지고 되돌릴 수 없어요.');">
+        <input type="hidden" name="password" value="">
         <button type="submit" class="danger-btn">전체 삭제</button>
       </form>
     </div>
     <div class="danger-row">
       <span class="danger-label">조원 매칭 정보 초기화<br>
         <span class="danger-desc">수동으로 등록한 카톡이름 매칭과 확인 완료 기록을 전부 지워요.</span></span>
-      <form method="post" action="{{ url_for('hamummal_upload_reset_matches') }}"
-        onsubmit="return confirm('정말로 조원 매칭 정보를 초기화할까요?\n수동으로 등록해둔 카톡이름이 전부 사라지고 되돌릴 수 없어요.');">
+      <form method="post" action="{{ url_for('hamummal_upload_reset_matches') }}" class="danger-form"
+        onsubmit="return window.__hamummalConfirmPw(this, '정말로 조원 매칭 정보를 초기화할까요?\n수동으로 등록해둔 카톡이름이 전부 사라지고 되돌릴 수 없어요.');">
+        <input type="hidden" name="password" value="">
         <button type="submit" class="danger-btn">매칭 초기화</button>
       </form>
     </div>
@@ -200,9 +176,10 @@
         {% for row in date_window_dates %}
           <div class="date-delete-row">
             <span>{{ row.date }}</span>
-            <form method="post" action="{{ url_for('hamummal_upload_delete_date') }}"
-              onsubmit="return confirm('{{ row.date }} 날짜의 분석 결과를 지울까요?\n되돌릴 수 없어요.');">
+            <form method="post" action="{{ url_for('hamummal_upload_delete_date') }}" class="danger-form"
+              onsubmit="return window.__hamummalConfirmPw(this, '{{ row.date }} 날짜의 분석 결과를 지울까요?\n되돌릴 수 없어요.');">
               <input type="hidden" name="date" value="{{ row.date }}">
+              <input type="hidden" name="password" value="">
               <button type="submit" class="danger-btn small">삭제</button>
             </form>
           </div>
@@ -210,6 +187,8 @@
       </div>
     </details>
   {% endif %}
+
+  <div class="toast" id="toast"></div>
 
   <script>
     document.getElementById('upload-form').addEventListener('submit', function () {
@@ -261,7 +240,37 @@
         }
       });
     })();
+
+    // 위험한 작업(전체삭제/매칭초기화/날짜별삭제) 버튼 전용 — 비밀번호를 팝업으로 물어보고
+    // 숨은 input에 채운 뒤에만 기존 확인창(confirm)을 띄운다.
+    window.__hamummalConfirmPw = function (form, confirmMsg) {
+      var pw = window.prompt('관리자 비밀번호를 입력해주세요.');
+      if (pw === null || pw === '') return false;
+      form.querySelector('input[name="password"]').value = pw;
+      return window.confirm(confirmMsg);
+    };
+
+    (function () {
+      var messages = [
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+          {text: {{ message|tojson }}, category: {{ category|tojson }}},
+        {% endfor %}
+      ];
+      if (!messages.length) return;
+      var toast = document.getElementById('toast');
+      var i = 0;
+      function showNext() {
+        if (i >= messages.length) return;
+        var m = messages[i++];
+        toast.textContent = m.text;
+        toast.className = 'toast show' + (m.category === 'success' ? '' : ' error');
+        setTimeout(function () {
+          toast.classList.remove('show');
+          setTimeout(showNext, 300);
+        }, 2600);
+      }
+      showNext();
+    })();
   </script>
-{% endif %}
 </body>
 </html>

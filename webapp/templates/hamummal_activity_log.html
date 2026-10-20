@@ -31,6 +31,14 @@
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:bold}
   .badge.view{background:#eef2ff;color:#3b4ea3}
   .badge.apply{background:#fff3e0;color:#8a5a00}
+  .badge.attendance_view{background:#eef2ff;color:#3b4ea3}
+  .badge.roster_view{background:#eef2ff;color:#3b4ea3}
+  .badge.roster_set{background:#fff3e0;color:#8a5a00}
+  .badge.upload{background:#eafaf1;color:#0a7a2f}
+  .badge.windows_change{background:#fff3e0;color:#8a5a00}
+  .badge.reset_all{background:#fdecea;color:#c0392b}
+  .badge.reset_matches{background:#fdecea;color:#c0392b}
+  .badge.delete_date{background:#fdecea;color:#c0392b}
   .who{font-weight:bold}
   .who .role{font-weight:normal;color:#888;font-size:12px}
   .detail{color:#555;font-size:12px}
@@ -47,16 +55,24 @@
 </head>
 <body>
   <h1>하멈말 사용 로그</h1>
-  <p class="hint">조원이 결과확인 페이지를 언제 봤는지, "소리튠 조장페이지에 반영하기"를 언제 눌렀는지 기록이에요.
-     최근 300건까지만 보여줘요.</p>
+  <p class="hint">조원이 결과확인 페이지를 언제 봤는지, 관리자 작업(업로드·초기화·삭제 등)을 누가
+     언제 했는지 기록이에요. 최근 300건까지만 보여줘요.</p>
   <p class="hint"><a href="{{ url_for('hamummal_upload') }}">← 하멈말 관리로 돌아가기</a></p>
 
   <form class="filter-form" method="get" action="{{ url_for('hamummal_upload_activity_log') }}">
     <input type="text" name="team" placeholder="조 이름으로 필터 (예:달리조)" value="{{ team }}">
     <select name="event_type">
       <option value="" {{ 'selected' if not event_type else '' }}>전체</option>
-      <option value="view" {{ 'selected' if event_type == 'view' else '' }}>조회만</option>
-      <option value="apply" {{ 'selected' if event_type == 'apply' else '' }}>반영만</option>
+      <option value="view" {{ 'selected' if event_type == 'view' else '' }}>결과확인 조회</option>
+      <option value="apply" {{ 'selected' if event_type == 'apply' else '' }}>반영하기</option>
+      <option value="attendance_view" {{ 'selected' if event_type == 'attendance_view' else '' }}>출석률 조회</option>
+      <option value="roster_view" {{ 'selected' if event_type == 'roster_view' else '' }}>조원 매칭 조회</option>
+      <option value="roster_set" {{ 'selected' if event_type == 'roster_set' else '' }}>조원 매칭 설정</option>
+      <option value="upload" {{ 'selected' if event_type == 'upload' else '' }}>대화내용 업로드</option>
+      <option value="windows_change" {{ 'selected' if event_type == 'windows_change' else '' }}>진행시간 변경</option>
+      <option value="reset_all" {{ 'selected' if event_type == 'reset_all' else '' }}>전체 데이터 초기화</option>
+      <option value="reset_matches" {{ 'selected' if event_type == 'reset_matches' else '' }}>매칭 초기화</option>
+      <option value="delete_date" {{ 'selected' if event_type == 'delete_date' else '' }}>날짜별 결과 삭제</option>
     </select>
     <button type="submit">필터 적용</button>
     {% if team or event_type %}
@@ -66,6 +82,12 @@
 
   <p class="log-count">{{ logs|length }}건</p>
 
+  {% set event_labels = {
+    'view': '결과확인 조회', 'apply': '반영하기', 'attendance_view': '출석률 조회',
+    'roster_view': '조원 매칭 조회', 'roster_set': '조원 매칭 설정', 'upload': '대화내용 업로드',
+    'windows_change': '진행시간 변경', 'reset_all': '전체 초기화', 'reset_matches': '매칭 초기화',
+    'delete_date': '날짜별 삭제',
+  } %}
   {% if not logs %}
     <p class="empty">기록이 아직 없어요.</p>
   {% else %}
@@ -84,7 +106,7 @@
         {% for log in logs %}
           <tr>
             <td data-label="시간">{{ log.created_at.replace('T', ' ') if log.created_at else '' }}</td>
-            <td data-label="종류"><span class="badge {{ log.event_type }}">{{ '조회' if log.event_type == 'view' else '반영' }}</span></td>
+            <td data-label="종류"><span class="badge {{ log.event_type }}">{{ event_labels.get(log.event_type, log.event_type) }}</span></td>
             <td data-label="조">{{ log.team }}</td>
             <td data-label="이름">
               <span class="who">{{ log.member_name or '(이름 없음)' }}</span>
@@ -96,6 +118,24 @@
                 {% set results = log.detail.results or {} %}
                 {% set r = results.get(log.team) %}
                 {{ r or ((log.detail.added or 0) ~ '명 반영 / ' ~ (log.detail.removed or 0) ~ '명 해제') }}
+              {% elif log.event_type == 'upload' and log.detail %}
+                {{ log.detail.processed_dates|length }}개 날짜 분석
+                {% if log.detail.skipped_dates %}· {{ log.detail.skipped_dates|length }}개 건너뜀{% endif %}
+                {% if log.detail.today_window %}· 오늘 시간 {{ log.detail.today_window }}{% endif %}
+              {% elif log.event_type == 'windows_change' and log.detail %}
+                {{ log.detail.changed|length }}개 날짜 시간 변경
+              {% elif log.event_type == 'reset_all' and log.detail %}
+                {{ log.detail.deleted }}건 삭제
+              {% elif log.event_type == 'reset_matches' and log.detail %}
+                매칭 {{ log.detail.override_deleted }}건 · 확인완료 {{ log.detail.confirmed_deleted }}건 삭제
+              {% elif log.event_type == 'delete_date' and log.detail %}
+                {{ log.detail.deleted_rows }}건 삭제
+              {% elif log.event_type == 'roster_set' and log.detail %}
+                {% if log.detail.raw %}
+                  "{{ log.detail.raw }}"로 매칭
+                {% else %}
+                  매칭 {{ log.detail.matched }}명 · 확인필요 {{ log.detail.ambiguous }}명 · 못찾음 {{ log.detail.no_match }}명
+                {% endif %}
               {% endif %}
             </td>
           </tr>
