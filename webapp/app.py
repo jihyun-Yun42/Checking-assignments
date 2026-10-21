@@ -865,55 +865,28 @@ def hamummal_review_roster_status():
     return jsonify(ok=True, people=people, all_raw_names=all_raw_names)
 
 
-@app.route("/hamummal-review/bulk-match-resync-all", methods=["POST"])
-def hamummal_review_bulk_match_resync_all():
-    # "조원 매칭 현황"에 이미 매칭/override로 저장돼 있는 사람이라도, 그 저장이
-    # (다른 날짜까지 같이 고쳐주지 않던) 예전 버전에서 이뤄졌다면 그 뒤로 분석된
-    # 날짜들엔 아직 반영이 안 돼 있을 수 있다. 한 명씩 다시 "수정"을 눌러야만
-    # 고쳐지는 게 아니라, 조원 전체를 대상으로 지금 알고 있는 카톡 이름 기준으로
-    # 모든 날짜에 한꺼번에 다시 소급 반영한다.
+@app.route("/hamummal-review/bulk-match-reset-all", methods=["POST"])
+def hamummal_review_bulk_match_reset_all():
+    # "조원 매칭 현황"에서 리더가 수기로 고르거나 입력해서 저장해둔 카톡 이름
+    # (override)을 조 전체 대상으로 한 번에 지운다. 지운 뒤엔 자동으로 식별된
+    # 매칭 결과만 보이게 된다 - 싐제 로그인각로 저잹핾지으을 기록 자체는 그대로 둔다.
     member = _current_member_or_none()
     if not member:
         return jsonify(ok=False, error="로그인이 필요합니다."), 401
     my_team = str(member.get("조"))
 
-    roster = _current_team_roster(my_team)
-    overrides = db_client.get_display_name_overrides(my_team)
-
-    submitted_matched = {}
-    hint_matched = {}
-    rows = db_client.list_team_reviews(my_team)
-    for row in rows:
-        entry = (row.get("review") or {}).get(my_team) or {}
-        for m in entry.get("matched") or []:
-            raw = m.get("_matched_raw")
-            if raw:
-                submitted_matched[str(m.get("id"))] = raw
-        for m in entry.get("unmatched_members") or []:
-            raw = m.get("_known_raw")
-            if raw:
-                hint_matched[str(m.get("id"))] = raw
-
-    fixed_dates = set()
-    checked = 0
-    for m in roster:
-        mid = str(m.get("id"))
-        override_raw = overrides.get(mid)
-        auto_raw = submitted_matched.get(mid) or hint_matched.get(mid)
-        raw = override_raw or auto_raw
-        if not raw:
-            continue
-        checked += 1
-        fixed_dates.update(_retroactively_apply_other_dates(None, my_team, mid, raw))
+    try:
+        deleted = db_client.delete_display_name_overrides(my_team)
+    except Exception:
+        return jsonify(ok=False, error="리셋하지 못했어요. 잠시 후 다시 시도해주세요."), 500
 
     try:
         db_client.log_hamummal_activity(
-            "roster_resync_all", my_team, member,
-            detail={"checked": checked, "fixed": len(fixed_dates)},
+            "roster_reset_all", my_team, member, detail={"deleted": deleted},
         )
     except Exception:
         pass
-    return jsonify(ok=True, checked=checked, fixed_dates=sorted(fixed_dates))
+    return jsonify(ok=True, deleted=deleted)
 
 
 def _submitted_at_24h(raw):

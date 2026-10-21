@@ -61,18 +61,16 @@
   .bulk-name-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
   .bulk-name-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
   .bulk-status-controls{display:flex;align-items:center;gap:6px}
-  .bulk-status-input{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:13px;
+  .bulk-status-pseudo-input{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:13px;
        border:1px solid #ddd;border-radius:6px;font-family:inherit;
-       background:#fff;color:#222}
-  .bulk-status-save-btn{border:1px solid #d8c48a;background:#fff;color:#8a6100;border-radius:999px;
-       padding:7px 12px;font-size:12px;cursor:pointer;width:auto;margin:0;flex-shrink:0}
-  .bulk-status-save-btn:hover{background:#fdf3dd}
-  .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
+       background:#fff;color:#222;cursor:pointer;display:block}
+  .bulk-status-pseudo-input:hover{border-color:#d8c48a;background:#fdf3dd}
+  .bulk-status-placeholder{color:#aaa}
 
-  .resync-all-btn{margin-left:8px;border:1px solid #d8c48a;background:#fff;color:#8a6100;
+  .reset-all-btn{margin-left:8px;border:1px solid #e0b0b0;background:#fff;color:#a33333;
        border-radius:999px;font-size:12px;padding:3px 10px;cursor:pointer;vertical-align:middle}
-  .resync-all-btn:disabled{opacity:.5;cursor:default}
-  .resync-all-hint{font-size:12px;color:#999;margin:4px 0 10px;line-height:1.5}
+  .reset-all-btn:disabled{opacity:.5;cursor:default}
+  .reset-all-hint{font-size:12px;color:#999;margin:4px 0 10px;line-height:1.5}
 
   /* 데스크탑(넓은 화면)에서는 이름 - 입력칸 - 버튼을 한 줄에, 모바일(좁은
      화면)에서는 이름을 윗줄에 따로 두고 입력칸+버튼을 아랫줄에 배치한다.
@@ -82,7 +80,7 @@
     .bulk-status-row{flex-direction:row;align-items:center;gap:8px}
     .bulk-status-row .nm{flex:1 1 auto;min-width:0}
     .bulk-status-controls{flex:0 0 auto}
-    .bulk-status-input{flex:0 0 auto;width:200px}
+    .bulk-status-pseudo-input{flex:0 0 auto;width:200px}
   }
 
   .input-wrap{position:relative}
@@ -146,10 +144,10 @@
 
   <hr class="section-divider">
   <p class="board-title">조원 매칭 현황
-    <button type="button" id="resync-all-btn" class="resync-all-btn">🔄 전체 다시 반영</button>
+    <button type="button" id="reset-all-btn" class="reset-all-btn">🗑️ 전체 리셋</button>
   </p>
-  <p class="resync-all-hint">전에 고쳐둔 사람인데도 다른 날짜엔 아직 반영이 안 돼 있는 것 같으면 눌러주세요.
-    지금 알고 있는 카톡 이름 기준으로 지금까지 분석된 모든 날짜를 한꺼번에 다시 확인해요.</p>
+  <p class="reset-all-hint">우리 조에서 수기로 고르거나 입력해서 저장해둔 카톡 이름을 전부 지우고, 자동으로
+    매칭된 결과만 다시 보여줘요. 되돌릴 수 없으니 신중하게 눌러주세요.</p>
   <div id="bulk-roster-status"></div>
 
   <div class="modal-overlay" id="rawname-modal" hidden>
@@ -184,7 +182,7 @@
       var BULK_MATCH_URL = {{ url_for('hamummal_review_bulk_match_names') | tojson }};
       var BULK_RESOLVE_URL = {{ url_for('hamummal_review_bulk_match_resolve') | tojson }};
       var ROSTER_STATUS_URL = {{ url_for('hamummal_review_roster_status') | tojson }};
-      var RESYNC_ALL_URL = {{ url_for('hamummal_review_bulk_match_resync_all') | tojson }};
+      var RESET_ALL_URL = {{ url_for('hamummal_review_bulk_match_reset_all') | tojson }};
 
       var ALL_RAW_NAMES = [];
 
@@ -522,14 +520,15 @@
 
       function statusRowHtml(p) {
         var autoTag = p.auto ? '<span class="auto-tag">자동</span>' : '';
+        var valueHtml = p.matched_raw
+          ? escapeHtml(p.matched_raw)
+          : '<span class="bulk-status-placeholder">눌러서 카톡 이름 선택</span>';
         return '<div class="bulk-status-row" data-member-id="' + p.member_id + '">' +
           '<span class="nm bulk-name-trigger" role="button" tabindex="0" data-member-id="' + p.member_id + '">' +
           escapeHtml(p.display) + autoTag + '</span>' +
           '<div class="bulk-status-controls">' +
-          '<input type="text" class="bulk-status-input" placeholder="카톡 이름" value="' +
-          escapeHtml(p.matched_raw || '') + '">' +
-          '<button type="button" class="bulk-status-save-btn" data-member-id="' + p.member_id + '">' +
-          (p.matched_raw ? '수정' : '매칭') + '</button>' +
+          '<span class="bulk-status-pseudo-input bulk-name-trigger" role="button" tabindex="0" data-member-id="' +
+          p.member_id + '">' + valueHtml + '</span>' +
           '</div>' +
           '</div>';
       }
@@ -671,6 +670,10 @@
       });
 
       function wireRosterStatusButtons() {
+        // 이름을 눌러도, 지금 매칭된 카톡 이름(또는 "눌러서 선택" 안내)을
+        // 눌러도 똑같이 "카톡 이름 선택" 팝업이 뜬다 — 직접 타이핑은 그
+        // 팝업 안의 검색/직접 입력 쪽에서만 가능하다(전체 소통방 명단에
+        // 없을 때만 쓰라는 용도).
         statusEl.querySelectorAll('.bulk-name-trigger').forEach(function (trigger) {
           trigger.addEventListener('click', function () {
             openRawNameModal(trigger.getAttribute('data-member-id'));
@@ -679,57 +682,34 @@
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); trigger.click(); }
           });
         });
-        statusEl.querySelectorAll('.bulk-status-save-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            var row = btn.closest('.bulk-status-row');
-            var memberId = btn.getAttribute('data-member-id');
-            var raw = row.querySelector('.bulk-status-input').value.trim();
-            if (!raw) return;
-            btn.disabled = true;
-            doResolve(memberId, raw, false, function (d) {
-              showToast('매칭 완료' + fixedDatesSuffix(d.fixed_dates));
-              loadRosterStatus();
-            }, function (errMsg) {
-              showToast(errMsg || '매칭하지 못했어요.');
-              btn.disabled = false;
-            }, function () {
-              btn.disabled = false;
-            });
-          });
-        });
-        // 입력칸에서 엔터를 치면 같은 줄의 매칭/수정 버튼을 누른 것처럼 동작한다.
-        statusEl.querySelectorAll('.bulk-status-input').forEach(function (input) {
-          input.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            var row = input.closest('.bulk-status-row');
-            var btn = row && row.querySelector('.bulk-status-save-btn');
-            if (btn && !btn.disabled) btn.click();
-          });
-        });
       }
 
-      var resyncAllBtn = document.getElementById('resync-all-btn');
-      if (resyncAllBtn) {
-        resyncAllBtn.addEventListener('click', function () {
-          resyncAllBtn.disabled = true;
-          resyncAllBtn.textContent = '확인 중…';
-          fetch(RESYNC_ALL_URL, { method: 'POST', credentials: 'same-origin' })
+      var resetAllBtn = document.getElementById('reset-all-btn');
+      if (resetAllBtn) {
+        resetAllBtn.addEventListener('click', function () {
+          var sure = window.confirm(
+            '우리 조에서 수기로 고르거나 입력해서 저장해둔 카톡 이름을 전부 지우고, ' +
+            '자동 매칭된 결과만 보이게 할까요?\n되돌릴 수 없어요.'
+          );
+          if (!sure) return;
+          resetAllBtn.disabled = true;
+          resetAllBtn.textContent = '리셋 중…';
+          fetch(RESET_ALL_URL, { method: 'POST', credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (data) {
-              resyncAllBtn.disabled = false;
-              resyncAllBtn.textContent = '🔄 전체 다시 반영';
+              resetAllBtn.disabled = false;
+              resetAllBtn.textContent = '🗑️ 전체 리셋';
               if (!data.ok) {
-                showToast(data.error || '다시 반영하지 못했어요.');
+                showToast(data.error || '리셋하지 못했어요.');
                 return;
               }
-              showToast('확인 완료' + fixedDatesSuffix(data.fixed_dates));
+              showToast('리셋 완료 (' + data.deleted + '명)');
               loadRosterStatus();
             })
             .catch(function () {
-              resyncAllBtn.disabled = false;
-              resyncAllBtn.textContent = '🔄 전체 다시 반영';
-              showToast('네트워크 오류로 다시 반영하지 못했어요.');
+              resetAllBtn.disabled = false;
+              resetAllBtn.textContent = '🗑️ 전체 리셋';
+              showToast('네트워크 오류로 리셋하지 못했어요.');
             });
         });
       }

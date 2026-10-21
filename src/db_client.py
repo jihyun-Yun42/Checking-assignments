@@ -382,6 +382,18 @@ def set_display_name_override(team: str, member_id, name: str):
     )
 
 
+def delete_display_name_overrides(team: str) -> int:
+    # "조원 일괄 매칭" 페이지 "전체 리셋" — 그 조에서 수기로 고르거나
+    # 입력해서 저장해둔 override를 전부 지운다. 실제 날짜별 제출/매칭
+    # 기록(hamummal_reviews)은 건드리지 않으니, 지운 뒤엔 자동 매칭된
+    # 값만 보이게 된다.
+    rows = _query(
+        "DELETE FROM display_name_overrides WHERE team = %s RETURNING member_id",
+        (str(team),),
+    )
+    return len(rows)
+
+
 # --- 하멈말 리뷰 결과 (예전엔 로컬 파일(data/hamummal_review/*.json)에 저장했는데,
 # Vercel 등 서버리스 환경에서는 요청 간에 로컬 디스크가 유지된다는 보장이 없어서
 # Postgres로 옮김) ---
