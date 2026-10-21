@@ -868,8 +868,16 @@ def hamummal_review_roster_status():
 @app.route("/hamummal-review/bulk-match-reset-all", methods=["POST"])
 def hamummal_review_bulk_match_reset_all():
     # "조원 매칭 현황"에서 리더가 수기로 고르거나 입력해서 저장해둔 카톡 이름
-    # (override)을 조 전체 대상으로 한 번에 지운다. 지운 뒤엔 자동으로 식별된
-    # 매칭 결과만 보이게 된다 - 싐제 로그인각로 저잹핾지으을 기록 자체는 그대로 둔다.
+    # (override)을 조 전체 대상으로 한 번에 지운다. override만 지우면 "결과확인"
+    # 페이지에 날짜별로 저장돼 있는 matched/unmatched 데이터 자체는 안 바뀐다 —
+    # 예전에 override를 등록했을 때 그 값 기준으로 날짜들을 직접 고쳐 써놨기
+    # 때문이다. 그래서 override를 지운 뒤, 그 조의 날짜별 데이터도 override 없이
+    # 순수하게 자동으로 매칭한 결과로 다시 계산해서 덮어쓴다. 카톡 원본 파일은
+    # 업로드 때 바로 지워지지만, 그 날짜의 제출자 목록(chat_senders 등)은 DB에
+    # 남아있어서 다시 계산할 수 있다 — 조원이 결과확인을 처음 열 때 "아직 이
+    # 날짜에 우리 조가 없을 때" 쓰는 것과 같은 방식(compute_team_entries_for_dates)
+    # 이다. 실제 소리튠 쪽 반영은 여기서 다시 올리지 않고 그대로 두며, 달라진
+    # 게 있으면 기존의 "반영하기" 버튼 재활성화 로직이 알아서 알려준다.
     member = _current_member_or_none()
     if not member:
         return jsonify(ok=False, error="로그인이 필요합니다."), 401
@@ -880,13 +888,45 @@ def hamummal_review_bulk_match_reset_all():
     except Exception:
         return jsonify(ok=False, error="리셋하지 못했어요. 잠시 후 다시 시도해주세요."), 500
 
+    members = db_client.active_members_by_team().get(my_team) or []
+    rows = [r for r in db_client.list_team_reviews(my_team) if my_team in (r.get("review") or {})]
+    dated_rows = [
+        (
+            r["check_date"], r.get("chat_senders") or [],
+            _exclude_staff_accounts(r.get("all_chat_senders")), r.get("submission_times") or {},
+        )
+        for r in rows
+    ]
+    results, login_error = hamummal_dashboard.compute_team_entries_for_dates(my_team, members, dated_rows)
+
+    recomputed = 0
+    failed_dates = []
+    row_by_date = {r["check_date"]: r for r in rows}
+    for check_date_str, fresh_entry in results.items():
+        row = row_by_date.get(check_date_str)
+        if not row:
+            continue
+        if not fresh_entry or fresh_entry.get("error"):
+            failed_dates.append(check_date_str)
+            continue
+        _purge_resolved_ambiguous(fresh_entry)
+        try:
+            db_client.update_review_team_entry(row["id"], my_team, fresh_entry)
+            recomputed += 1
+        except Exception:
+            failed_dates.append(check_date_str)
+
     try:
         db_client.log_hamummal_activity(
-            "roster_reset_all", my_team, member, detail={"deleted": deleted},
+            "roster_reset_all", my_team, member,
+            detail={"deleted": deleted, "recomputed": recomputed, "failed": len(failed_dates)},
         )
     except Exception:
         pass
-    return jsonify(ok=True, deleted=deleted)
+    return jsonify(
+        ok=True, deleted=deleted, recomputed=recomputed,
+        failed_dates=sorted(failed_dates), login_error=login_error,
+    )
 
 
 def _submitted_at_24h(raw):

@@ -128,9 +128,9 @@
 <body>
   <p class="back-link"><a href="{{ url_for('hamummal_review_dates') }}">← 날짜 목록</a></p>
   <h1>🔗 조원 이름 일괄 매칭</h1>
-  <p class="desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면,
-    아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.
-    다음부터 그 이름으로 메시지를 보내면 자동으로 제출자로 잡혀요.</p>
+  <p class="desc">카카오톡 소통방 참가자 명단을 쉼표(,)나 줄바꿈으로 구분해서 붙여넣으면, 아직 한 번도 메시지를 보낸 적 없는 조원도 미리 이름을 매칭해둬요.<br>
+    적은 이름을 바탕으로 프로그램이 다시 매칭을 해요.<br>
+    이름과 닉네임을 모두 적어주셔야 더 정확하게 반영됩니다.(회차제외)</p>
 
   <div class="input-wrap">
     <div class="input-row">
@@ -146,8 +146,8 @@
   <p class="board-title">조원 매칭 현황
     <button type="button" id="reset-all-btn" class="reset-all-btn">🗑️ 전체 리셋</button>
   </p>
-  <p class="reset-all-hint">우리 조에서 수기로 고르거나 입력해서 저장해둔 카톡 이름을 전부 지우고, 자동으로
-    매칭된 결과만 다시 보여줘요. 되돌릴 수 없으니 신중하게 눌러주세요.</p>
+  <p class="reset-all-hint">직접 이름을 선택하거나 수기로 입력해서 저장해둔 카톡 이름을 전부 지우고, 프로그램이 자동으로 매칭된 결과로 보여줘요.<br>
+    되돌릴 수 없으니 신중하게 눌러주세요.</p>
   <div id="bulk-roster-status"></div>
 
   <div class="modal-overlay" id="rawname-modal" hidden>
@@ -703,7 +703,10 @@
                 showToast(data.error || '리셋하지 못했어요.');
                 return;
               }
-              showToast('리셋 완료 (' + data.deleted + '명)');
+              var msg = '리셋 완료 (' + data.deleted + '명 · 날짜 ' + data.recomputed + '개 다시 계산)';
+              if (data.login_error) msg += ' · ' + data.login_error;
+              else if (data.failed_dates && data.failed_dates.length) msg += ' · 실패 ' + data.failed_dates.length + '개';
+              showToast(msg);
               loadRosterStatus();
             })
             .catch(function () {

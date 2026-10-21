@@ -78,6 +78,74 @@ def compute_team_entry(
     return match
 
 
+def compute_team_entries_for_dates(team: str, members: list, dated_rows: list):
+    """
+    compute_team_entry와 같은 방식으로 날짜별 matched/unmatched/ambiguous를 다시
+    계산하지만, 조장/부조장 로그인은 한 번만 하고 여러 날짜에 그 세션을 그대로
+    써서 날짜 수가 많아도 로그인을 날짜마다 반복하지 않는다. "조원 일괄 매칭"
+    페이지의 "전체 리셋"처럼 그 조의 모든 날짜를 한꺼번에 다시 계산할 때 쓴다.
+
+    dated_rows: [(check_date_str, submitters, all_submitters, submission_times), ...]
+    반환값: (results, login_error) — results는 {check_date_str: entry_dict},
+    로그인 자체가 안 되면 results는 빈 dict이고 login_error에 이유가 담긴다.
+    """
+    leader_like = [
+        m for m in (members or [])
+        if m.get("역할") in ("조장", "부조장") and m.get("휴대폰번호")
+    ]
+    if not leader_like:
+        return {}, "조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어요."
+
+    session = admin_info = login_phone = None
+    last_error = None
+    for m in leader_like:
+        phone = m.get("휴대폰번호")
+        try:
+            session, admin_info = leader_dashboard_client.login(phone)
+            login_phone = phone
+            break
+        except Exception as e:
+            last_error = str(e)
+            continue
+    if not session:
+        return {}, (last_error or "가입된 번호로 로그인하지 못했습니다.")
+
+    confirmed_rows = db_client.get_confirmed_matches(team)
+    display_name_overrides = db_client.get_display_name_overrides(team)
+
+    results = {}
+    for check_date_str, submitters, all_submitters, submission_times in dated_rows:
+        try:
+            board = leader_dashboard_client.fetch_status_board(
+                session, admin_info["cohort_id"], check_date_str, admin_info["group_id"]
+            )
+        except Exception as e:
+            results[check_date_str] = {
+                "matched": [], "unmatched_members": [], "ambiguous": [],
+                "error": str(e), "_phone": login_phone,
+            }
+            continue
+
+        match = hamummal_matcher.match_submitters(
+            submitters,
+            board.get("members") or [],
+            confirmed_rows=confirmed_rows,
+            display_name_overrides=display_name_overrides,
+            all_chat_senders=sorted(all_submitters),
+        )
+        times = submission_times or {}
+        for m in match["matched"]:
+            raw = m.get("_matched_raw")
+            formatted = times.get(raw)
+            if formatted:
+                m["_submitted_at"] = formatted
+        match["error"] = None
+        match["_phone"] = login_phone
+        results[check_date_str] = match
+
+    return results, None
+
+
 def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
     # "제출자 목록에 몇 시에 제출했는지" 표시용 — 판정(제출했는지 자체)에는
