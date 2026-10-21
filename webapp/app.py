@@ -1033,9 +1033,12 @@ def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
         if str(row["id"]) == str(review_id):
             continue  # 지금 보고 있는 날짜는 호출한 쪽에서 이미 처리함
 
-        if (row.get("applied_teams") or {}).get(team):
-            continue  # 이미 반영된 날짜는 건드리지 않음
-
+        # 이미 "반영하기"를 눌러서 소리튠에 반영된 날짜도 여기서 똑같이 실제
+        # 제출여부 기준으로 고친다. 반영 당시 스냅샷(applied_teams[team].
+        # matched_ids)은 그대로 남겨두니, 고친 뒤 지금 matched 목록이 그
+        # 스냅샷과 달라지면 결과확인 페이지의 "반영하기" 버튼이 자동으로 다시
+        # 활성화된다(computeApplyDelta) — 그러면 리더가 확인하고 다시 눌러서
+        # 소리튠 쪽 실제 반영 명단까지 맞추면 된다.
         row_entry = (row.get("review") or {}).get(team)
         if not row_entry:
             continue
