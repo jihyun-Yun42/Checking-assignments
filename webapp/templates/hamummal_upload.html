@@ -313,6 +313,10 @@
         openModal(form, confirmMsg);
         return false; // 폼의 기본 제출은 항상 막고, 모달에서 확인하면 그때 form.submit()으로 직접 보낸다.
       };
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+      });
     })();
 
     (function () {

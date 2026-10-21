@@ -116,6 +116,7 @@
   .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2}
   .fixname-item:last-child{border-bottom:none}
   .fixname-item:hover{background:#f8f5ee}
+  .fixname-item.fixname-item-active{background:#f8f5ee}
   .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
   .fixname-item.fixname-item-empty{color:#999;cursor:default}
   .fixname-item.fixname-item-empty:hover{background:none}
@@ -656,10 +657,30 @@
         }
       }
 
+      var rawNameSelectedIndex = -1;
+
+      function rawNameItems() {
+        return rawNameList.querySelectorAll('.fixname-item:not(.fixname-item-empty)');
+      }
+
+      function highlightRawNameItem(index) {
+        var items = rawNameItems();
+        items.forEach(function (el) { el.classList.remove('fixname-item-active'); });
+        if (index < 0 || index >= items.length) return;
+        items[index].classList.add('fixname-item-active');
+        items[index].scrollIntoView({ block: 'nearest' });
+      }
+
+      function resetRawNameSelection() {
+        rawNameSelectedIndex = rawNameItems().length ? 0 : -1;
+        highlightRawNameItem(rawNameSelectedIndex);
+      }
+
       function openRawNameModal(memberId) {
         rawNameTargetMemberId = memberId;
         rawNameSearch.value = '';
         renderRawNameList();
+        resetRawNameSelection();
         rawNameModal.hidden = false;
         rawNameSearch.focus();
       }
@@ -676,12 +697,34 @@
         }, function () {});
       }
 
-      rawNameSearch.addEventListener('input', renderRawNameList);
+      rawNameSearch.addEventListener('input', function () {
+        renderRawNameList();
+        resetRawNameSelection();
+      });
+      // 방향키(위/아래)와 Tab/Shift+Tab 모두 목록 이동으로 쓴다 — 검색창에서
+      // 포커스가 안 벗어나고 계속 목록을 훑을 수 있게. Enter는 지금 highlight된
+      // 항목(없으면 첫 번째)을 고른다.
       rawNameSearch.addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        var first = rawNameList.querySelector('.fixname-item:not(.fixname-item-empty)');
-        if (first) first.click();
+        var items = rawNameItems();
+        if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+          if (!items.length) return;
+          e.preventDefault();
+          rawNameSelectedIndex = (rawNameSelectedIndex + 1) % items.length;
+          highlightRawNameItem(rawNameSelectedIndex);
+          return;
+        }
+        if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+          if (!items.length) return;
+          e.preventDefault();
+          rawNameSelectedIndex = (rawNameSelectedIndex - 1 + items.length) % items.length;
+          highlightRawNameItem(rawNameSelectedIndex);
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var target = items[rawNameSelectedIndex] || items[0];
+          if (target) target.click();
+        }
       });
       rawNameCancel.addEventListener('click', closeRawNameModal);
       rawNameClose.addEventListener('click', closeRawNameModal);
@@ -754,6 +797,14 @@
           resetConfirmModal.hidden = false;
         });
       }
+
+      // ---------- Esc 키로 모달 닫기 (이 페이지의 모든 모달 공통) ----------
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (!rawNameModal.hidden) { closeRawNameModal(); return; }
+        if (!conflictModal.hidden) { closeConflictModal(true); return; }
+        if (resetConfirmModal && !resetConfirmModal.hidden) { closeResetConfirmModal(); return; }
+      });
 
       loadRosterStatus();
     })();

@@ -81,6 +81,7 @@
        display:flex;align-items:center;justify-content:space-between;gap:8px}
   .fixname-item:last-child{border-bottom:none}
   .fixname-item:hover{background:#f8f5ee}
+  .fixname-item.fixname-item-active{background:#f8f5ee}
   .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
   .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
   .fixname-item.fixname-item-empty{color:#999;cursor:default;
@@ -561,6 +562,25 @@
         }
       }
 
+      var fixnameSelectedIndex = -1;
+
+      function fixnameItems() {
+        return fixnameList.querySelectorAll('.fixname-item:not(.fixname-item-empty)');
+      }
+
+      function highlightFixnameItem(index) {
+        var items = fixnameItems();
+        items.forEach(function (el) { el.classList.remove('fixname-item-active'); });
+        if (index < 0 || index >= items.length) return;
+        items[index].classList.add('fixname-item-active');
+        items[index].scrollIntoView({ block: 'nearest' });
+      }
+
+      function resetFixnameSelection() {
+        fixnameSelectedIndex = fixnameItems().length ? 0 : -1;
+        highlightFixnameItem(fixnameSelectedIndex);
+      }
+
       function openFixnameModal(trigger) {
         var mode = trigger.getAttribute('data-mode') || 'unmatched';
         fixnameTarget = {
@@ -576,6 +596,7 @@
         };
         fixnameSearch.value = '';
         renderFixnameList();
+        resetFixnameSelection();
         fixnameModal.hidden = false;
         fixnameSearch.focus();
       }
@@ -595,7 +616,35 @@
       }
       wireFixNameButtons();
 
-      fixnameSearch.addEventListener('input', renderFixnameList);
+      fixnameSearch.addEventListener('input', function () {
+        renderFixnameList();
+        resetFixnameSelection();
+      });
+      // 방향키(위/아래)와 Tab/Shift+Tab 모두 목록 이동으로 쓴다 — 검색창에서
+      // 포커스가 안 벗어나고 계속 목록을 훑을 수 있게. Enter는 지금
+      // highlight된 항목(없으면 첫 번째)을 고른다.
+      fixnameSearch.addEventListener('keydown', function (e) {
+        var items = fixnameItems();
+        if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+          if (!items.length) return;
+          e.preventDefault();
+          fixnameSelectedIndex = (fixnameSelectedIndex + 1) % items.length;
+          highlightFixnameItem(fixnameSelectedIndex);
+          return;
+        }
+        if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+          if (!items.length) return;
+          e.preventDefault();
+          fixnameSelectedIndex = (fixnameSelectedIndex - 1 + items.length) % items.length;
+          highlightFixnameItem(fixnameSelectedIndex);
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var target = items[fixnameSelectedIndex] || items[0];
+          if (target) target.click();
+        }
+      });
       fixnameCancel.addEventListener('click', closeFixnameModal);
       document.getElementById('fixname-close').addEventListener('click', closeFixnameModal);
       fixnameModal.addEventListener('click', function (e) {
@@ -966,6 +1015,15 @@
       });
       modal.addEventListener('click', function (e) {
         if (e.target === modal) modal.hidden = true;
+      });
+
+      // ---------- Esc 키로 모달 닫기 (이 페이지의 모든 모달 공통) ----------
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (!fixnameModal.hidden) { closeFixnameModal(); return; }
+        if (!excludeModal.hidden) { closeExcludeModal(); return; }
+        if (!infoModal.hidden) { closeInfoModal(); return; }
+        if (!modal.hidden) { modal.hidden = true; return; }
       });
 
       updateSubmitButtonState();

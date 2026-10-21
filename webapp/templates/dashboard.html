@@ -425,6 +425,14 @@
         }
       });
 
+      // ---------- Esc 키로 모달 닫기 (이 페이지의 모든 모달 공통) ----------
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (!renameModal.hidden) { closeRenameModal(); return; }
+        if (!logoutConfirmModal.hidden) { logoutConfirmModal.hidden = true; return; }
+        if (!infoModal.hidden) { closeInfoModal(); return; }
+      });
+
       loadDashboardData();
     })();
   </script>
