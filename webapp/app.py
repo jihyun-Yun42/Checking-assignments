@@ -848,18 +848,37 @@ def hamummal_review_roster_status():
         mid = str(m.get("id"))
         override_raw = overrides.get(mid)
         auto_raw = submitted_matched.get(mid) or hint_matched.get(mid)
-        # 리더가 "수정" 버튼으로 직접 저장한 override는 명시적인 정정이니
-        # 항상 우선한다. (예전엔 반대로 자동 매칭을 우선시켰는데, 그러면
-        # 자동 매칭 자체가 틀렸을 때 — 예: 예전 매칭 로직 버그로 다른
-        # 사람에게 잘못 자동매칭된 경우 — 아무리 "수정"으로 고쳐도 저장된
-        # 틀린 자동값이 계속 다시 떠서 고칠 방법이 없었다.) override가 없는
-        # 사람만 자동 매칭을 보여준다.
-        matched_raw = override_raw or auto_raw
+
+        matched_raw = None
+        auto = False
+        hint_raw = None
+
+        if override_raw:
+            # override는 이제 "실제 카톡 원문을 찾기 위한 힌트"로 쓴다. 팝업에서
+            # 전체 소통방 명단 중 하나를 그대로 고른 경우엔 이미 실제 원문이라
+            # 바로 찾아지고, 이름+닉네임만 수기로 입력한 경우엔 회차가 안 붙어
+            # 있어도 find_chat_sender_match가 회차를 찾아서 채워준다(예:
+            # "박정선_Laura" + 전체 명단 → "박정선_Laura(4회)"). 이렇게 찾은
+            # 값이라야 "자동" 표시를 붙이고 매칭된 걸로 센다 — 실제로 그런 이름의
+            # 카톡 발신자가 있는지 확인된 것이기 때문이다. 못 찾으면(오타 등)
+            # 수기로 적은 글자 그대로를 보여주되, 실제로 확인된 게 아니므로
+            # "아직 매칭 안 됨"으로 분류한다.
+            found = hamummal_matcher.find_chat_sender_match(override_raw, all_raw_names)
+            if found:
+                matched_raw = found
+                auto = True
+            else:
+                hint_raw = override_raw
+        elif auto_raw:
+            matched_raw = auto_raw
+            auto = True
+
         people.append({
             "member_id": m.get("id"),
             "display": _hamummal_display_name(m),
             "matched_raw": matched_raw,
-            "auto": bool(auto_raw) and not override_raw,
+            "auto": auto,
+            "hint": hint_raw,
         })
     people.sort(key=lambda p: p["display"])
     return jsonify(ok=True, people=people, all_raw_names=all_raw_names)
