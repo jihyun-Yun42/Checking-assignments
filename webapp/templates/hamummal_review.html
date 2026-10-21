@@ -530,10 +530,14 @@
           nameSpan.textContent = name;
           item.appendChild(nameSpan);
 
-          if (!isAlreadyMatchedRaw(name)) {
+          // "(매칭안됨)"은 우리 조 기준으로만 매칭 여부를 판단하는 거라
+          // (목록 자체는 전체 소통방 참가자라 다른 조원도 섞여 있다),
+          // 매칭 안 된 쪽엔 태그를 달지 않고, 우리 조에서 이미 매칭된
+          // 사람에게만 "(우리 조원)"이라고 표시해 헷갈리지 않게 한다.
+          if (isAlreadyMatchedRaw(name)) {
             var tag = document.createElement('span');
             tag.className = 'unmatched-tag';
-            tag.textContent = '(매칭안됨)';
+            tag.textContent = '(우리 조원)';
             item.appendChild(tag);
           }
 
