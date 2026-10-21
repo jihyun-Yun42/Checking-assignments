@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from flask import Flask, request, redirect, render_template, flash, session, url_for, jsonify
+from flask import Flask, request, redirect, render_template, flash, session, url_for, jsonify, Response
 
 from src import (
     config, db_client, leader_dashboard_client, hamummal_dashboard, hamummal_parser, hamummal_matcher,
@@ -481,10 +481,17 @@ def hamummal_review_bulk_match_page():
     return render_template("hamummal_bulk_match.html", team=str(member.get("조")))
 
 
+# 오류 제보에 사진을 첨부할 때 — 너무 많거나 큰 사진이 올라와서 DB가
+# 쓸데없이 커지지 않도록 걸어두는 상한선.
+MAX_FEEDBACK_IMAGES = 6
+MAX_FEEDBACK_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB
+
+
 @app.route("/hamummal-review/feedback", methods=["GET", "POST"])
 def hamummal_review_feedback():
-    # 조장/부조장이 오류/문제를 바로 제보할 수 있는 페이지. 밑에는 관리자가
-    # "업데이트 내역 작성" 페이지에서 적어둔 공지를 그대로 보여준다.
+    # 조장/부조장이 오류/문제를 바로 제보할 수 있는 페이지(사진 여러 장 첨부
+    # 가능). 밑에는 관리자가 "업데이트 내역 작성" 페이지에서 적어둔 공지를
+    # 그대로 보여준다.
     member = _current_member_or_none()
     if not member:
         return redirect(url_for("phone_entry"))
@@ -495,8 +502,30 @@ def hamummal_review_feedback():
         if not content:
             flash("내용을 입력해주세요.")
             return redirect(url_for("hamummal_review_feedback"))
+
+        images = [f for f in request.files.getlist("images") if f and f.filename]
+        if len(images) > MAX_FEEDBACK_IMAGES:
+            flash(f"사진은 최대 {MAX_FEEDBACK_IMAGES}장까지만 첨부할 수 있어요.")
+            return redirect(url_for("hamummal_review_feedback"))
+
+        image_payload = []
+        for f in images:
+            if not (f.mimetype or "").startswith("image/"):
+                flash("이미지 파일만 첨부할 수 있어요.")
+                return redirect(url_for("hamummal_review_feedback"))
+            data = f.read()
+            if len(data) > MAX_FEEDBACK_IMAGE_BYTES:
+                flash("사진 한 장의 용량이 너무 커요(최대 8MB).")
+                return redirect(url_for("hamummal_review_feedback"))
+            image_payload.append((f.mimetype, data))
+
         try:
-            db_client.add_hamummal_feedback(my_team, member, content)
+            feedback_id = db_client.add_hamummal_feedback(my_team, member, content)
+            for content_type, data in image_payload:
+                try:
+                    db_client.add_hamummal_feedback_image(feedback_id, content_type, data)
+                except Exception:
+                    pass  # 사진 저장이 실패해도 제보 글 자체는 이미 남았으니 넘어감
             flash("제보해주셔서 감사해요! 확인하고 반영할게요.", "success")
         except Exception:
             flash("제보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.")
@@ -504,6 +533,30 @@ def hamummal_review_feedback():
 
     changelog = db_client.list_hamummal_changelog(limit=100)
     return render_template("hamummal_feedback.html", changelog=changelog)
+
+
+@app.route("/hamummal-review/feedback/image/<int:image_id>")
+def hamummal_feedback_image(image_id):
+    # 제보에 첨부된 사진 원본을 그대로 돌려준다(제보 폼/관리자 페이지 둘 다
+    # <img src>로 바로 쓸 수 있게).
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    img = db_client.get_hamummal_feedback_image(image_id)
+    if not img:
+        return "", 404
+    return Response(img["data"], mimetype=img["content_type"])
+
+
+@app.route("/hamummal-review/feedback/admin")
+def hamummal_review_feedback_admin():
+    # 제보된 내용을 확인하는 페이지(사진 첨부분 포함). "하멈말 사용 로그"
+    # 페이지에서만 이어지는 링크라 사실상 관리자만 찾아온다.
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    feedback_list = db_client.list_hamummal_feedback(limit=200)
+    return render_template("hamummal_feedback_admin.html", feedback_list=feedback_list)
 
 
 def _team_attendance(team: str):
@@ -810,6 +863,57 @@ def hamummal_review_roster_status():
         })
     people.sort(key=lambda p: p["display"])
     return jsonify(ok=True, people=people, all_raw_names=all_raw_names)
+
+
+@app.route("/hamummal-review/bulk-match-resync-all", methods=["POST"])
+def hamummal_review_bulk_match_resync_all():
+    # "조원 매칭 현황"에 이미 매칭/override로 저장돼 있는 사람이라도, 그 저장이
+    # (다른 날짜까지 같이 고쳐주지 않던) 예전 버전에서 이뤄졌다면 그 뒤로 분석된
+    # 날짜들엔 아직 반영이 안 돼 있을 수 있다. 한 명씩 다시 "수정"을 눌러야만
+    # 고쳐지는 게 아니라, 조원 전체를 대상으로 지금 알고 있는 카톡 이름 기준으로
+    # 모든 날짜에 한꺼번에 다시 소급 반영한다.
+    member = _current_member_or_none()
+    if not member:
+        return jsonify(ok=False, error="로그인이 필요합니다."), 401
+    my_team = str(member.get("조"))
+
+    roster = _current_team_roster(my_team)
+    overrides = db_client.get_display_name_overrides(my_team)
+
+    submitted_matched = {}
+    hint_matched = {}
+    rows = db_client.list_team_reviews(my_team)
+    for row in rows:
+        entry = (row.get("review") or {}).get(my_team) or {}
+        for m in entry.get("matched") or []:
+            raw = m.get("_matched_raw")
+            if raw:
+                submitted_matched[str(m.get("id"))] = raw
+        for m in entry.get("unmatched_members") or []:
+            raw = m.get("_known_raw")
+            if raw:
+                hint_matched[str(m.get("id"))] = raw
+
+    fixed_dates = set()
+    checked = 0
+    for m in roster:
+        mid = str(m.get("id"))
+        override_raw = overrides.get(mid)
+        auto_raw = submitted_matched.get(mid) or hint_matched.get(mid)
+        raw = override_raw or auto_raw
+        if not raw:
+            continue
+        checked += 1
+        fixed_dates.update(_retroactively_apply_other_dates(None, my_team, mid, raw))
+
+    try:
+        db_client.log_hamummal_activity(
+            "roster_resync_all", my_team, member,
+            detail={"checked": checked, "fixed": len(fixed_dates)},
+        )
+    except Exception:
+        pass
+    return jsonify(ok=True, checked=checked, fixed_dates=sorted(fixed_dates))
 
 
 def _submitted_at_24h(raw):

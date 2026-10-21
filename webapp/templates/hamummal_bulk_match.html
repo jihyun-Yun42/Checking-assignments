@@ -69,6 +69,11 @@
   .bulk-status-save-btn:hover{background:#fdf3dd}
   .bulk-status-save-btn:disabled{opacity:.5;cursor:default}
 
+  .resync-all-btn{margin-left:8px;border:1px solid #d8c48a;background:#fff;color:#8a6100;
+       border-radius:999px;font-size:12px;padding:3px 10px;cursor:pointer;vertical-align:middle}
+  .resync-all-btn:disabled{opacity:.5;cursor:default}
+  .resync-all-hint{font-size:12px;color:#999;margin:4px 0 10px;line-height:1.5}
+
   /* 데스크탑(넓은 화면)에서는 이름 - 입력칸 - 버튼을 한 줄에, 모바일(좁은
      화면)에서는 이름을 윗줄에 따로 두고 입력칸+버튼을 아랫줄에 배치한다.
      한 줄로 붙었을 때 입력칸이 화면 끝까지 늘어나면 보기 불편해서, 이름 쪽이
@@ -140,7 +145,11 @@
   <div id="bulk-match-results"></div>
 
   <hr class="section-divider">
-  <p class="board-title">조원 매칭 현황</p>
+  <p class="board-title">조원 매칭 현황
+    <button type="button" id="resync-all-btn" class="resync-all-btn">🔄 전체 다시 반영</button>
+  </p>
+  <p class="resync-all-hint">전에 고쳐둔 사람인데도 다른 날짜엔 아직 반영이 안 돼 있는 것 같으면 눌러주세요.
+    지금 알고 있는 카톡 이름 기준으로 지금까지 분석된 모든 날짜를 한꺼번에 다시 확인해요.</p>
   <div id="bulk-roster-status"></div>
 
   <div class="modal-overlay" id="rawname-modal" hidden>
@@ -175,6 +184,7 @@
       var BULK_MATCH_URL = {{ url_for('hamummal_review_bulk_match_names') | tojson }};
       var BULK_RESOLVE_URL = {{ url_for('hamummal_review_bulk_match_resolve') | tojson }};
       var ROSTER_STATUS_URL = {{ url_for('hamummal_review_roster_status') | tojson }};
+      var RESYNC_ALL_URL = {{ url_for('hamummal_review_bulk_match_resync_all') | tojson }};
 
       var ALL_RAW_NAMES = [];
 
@@ -696,6 +706,31 @@
             var btn = row && row.querySelector('.bulk-status-save-btn');
             if (btn && !btn.disabled) btn.click();
           });
+        });
+      }
+
+      var resyncAllBtn = document.getElementById('resync-all-btn');
+      if (resyncAllBtn) {
+        resyncAllBtn.addEventListener('click', function () {
+          resyncAllBtn.disabled = true;
+          resyncAllBtn.textContent = '확인 중…';
+          fetch(RESYNC_ALL_URL, { method: 'POST', credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              resyncAllBtn.disabled = false;
+              resyncAllBtn.textContent = '🔄 전체 다시 반영';
+              if (!data.ok) {
+                showToast(data.error || '다시 반영하지 못했어요.');
+                return;
+              }
+              showToast('확인 완료' + fixedDatesSuffix(data.fixed_dates));
+              loadRosterStatus();
+            })
+            .catch(function () {
+              resyncAllBtn.disabled = false;
+              resyncAllBtn.textContent = '🔄 전체 다시 반영';
+              showToast('네트워크 오류로 다시 반영하지 못했어요.');
+            });
         });
       }
 
