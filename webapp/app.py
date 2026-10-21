@@ -1040,41 +1040,67 @@ def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
         if not row_entry:
             continue
 
-        row_target = None
-        for m in row_entry.get("unmatched_members") or []:
-            if str(m.get("id")) == str(member_id):
-                row_target = m
-                break
-        if row_target is None:
-            for amb in row_entry.get("ambiguous") or []:
-                for c in amb.get("candidates") or []:
-                    if str(c.get("id")) == str(member_id):
-                        row_target = c
-                        break
-                if row_target is not None:
+        changed = False
+
+        # 이미 이 날짜 "matched"에 이 조원이 들어있는 경우(예전 매칭 버그로
+        # 엉뚱한 원문이 붙어있었을 수 있음) — 지금 등록한 새 이름 기준으로
+        # 이 날짜 원문을 다시 찾아서, 다른 원문이 맞으면 그걸로 고치고, 이
+        # 날짜엔 이 이름으로 보낸 메시지를 못 찾으면 매칭에서 빼서 미제출로
+        # 되돌린다(엉뚱한 사람 제출로 계속 잡혀있지 않도록).
+        existing_matched = next(
+            (m for m in row_entry.get("matched") or [] if str(m.get("id")) == str(member_id)),
+            None,
+        )
+        if existing_matched is not None:
+            new_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
+            if new_raw != existing_matched.get("_matched_raw"):
+                if new_raw:
+                    existing_matched["_matched_raw"] = new_raw
+                else:
+                    row_entry["matched"] = [
+                        m for m in row_entry.get("matched") or [] if str(m.get("id")) != str(member_id)
+                    ]
+                    existing_matched.pop("_matched_raw", None)
+                    row_entry.setdefault("unmatched_members", []).append(existing_matched)
+                changed = True
+        else:
+            # 이 날짜엔 아직 매칭된 적 없는 경우 — "미제출"/"확인필요"에
+            # 남아있으면 기존 로직대로 채워준다.
+            row_target = None
+            for m in row_entry.get("unmatched_members") or []:
+                if str(m.get("id")) == str(member_id):
+                    row_target = m
                     break
-        if row_target is None:
-            continue  # 이 날짜엔 애초에 "미제출"/"확인필요"로 남아있지 않음
+            if row_target is None:
+                for amb in row_entry.get("ambiguous") or []:
+                    for c in amb.get("candidates") or []:
+                        if str(c.get("id")) == str(member_id):
+                            row_target = c
+                            break
+                    if row_target is not None:
+                        break
 
-        row_matched_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
-        if row_matched_raw is None:
-            continue  # 이 날짜엔 이 이름으로 보낸 메시지가 없음 — 진짜 미제출일 수 있으니 안 건드림
+            if row_target is not None:
+                row_matched_raw = hamummal_matcher.find_chat_sender_match(display_name, row.get("chat_senders") or [])
+                if row_matched_raw is not None:
+                    row_entry["unmatched_members"] = [
+                        m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
+                    ]
+                    row_cleaned_ambiguous = []
+                    for amb in row_entry.get("ambiguous") or []:
+                        kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
+                        if kept:
+                            amb["candidates"] = kept
+                            row_cleaned_ambiguous.append(amb)
+                    row_entry["ambiguous"] = row_cleaned_ambiguous
 
-        row_entry["unmatched_members"] = [
-            m for m in row_entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
-        ]
-        row_cleaned_ambiguous = []
-        for amb in row_entry.get("ambiguous") or []:
-            kept = [c for c in amb.get("candidates") or [] if str(c.get("id")) != str(member_id)]
-            if kept:
-                amb["candidates"] = kept
-                row_cleaned_ambiguous.append(amb)
-        row_entry["ambiguous"] = row_cleaned_ambiguous
+                    row_target["_matched_raw"] = row_matched_raw
+                    row_entry.setdefault("matched", []).append(row_target)
+                    changed = True
 
-        row_matched_ids = {str(x.get("id")) for x in (row_entry.get("matched") or [])}
-        if str(member_id) not in row_matched_ids:
-            row_target["_matched_raw"] = row_matched_raw
-            row_entry.setdefault("matched", []).append(row_target)
+        if not changed:
+            continue  # 이 날짜엔 고칠 게 없음
+
         _purge_resolved_ambiguous(row_entry)
 
         try:
