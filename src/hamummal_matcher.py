@@ -117,8 +117,19 @@ def match_submitters(
                 leftover = tokens - meta["nick_tokens"]
                 if leftover:
                     continue
+            # 실명만 겹치고 닉네임은 안 겹치는 경우(예: 조원 닉네임은 "Blair"인데
+            # 원문은 "박수연_jenni") — 이 조원에게 등록된 닉네임이 있는데 원문엔
+            # 그 닉네임이 전혀 안 보이고, 실명 말고 남는 토큰(= 다른 닉네임일
+            # 가능성)이 있으면 실명만 보고 바로 확정 매칭하면 안 된다("닉네임이
+            # 다르면 확인을 한번 거쳐야해" — 바로 이 경우). 완전히 후보에서
+            # 빼지는 않고 "확인 필요"로 남겨서 리더가 직접 확인하게 한다.
+            nickname_conflict = (
+                name_hit and not nick_hit and meta["nick_tokens"]
+                and bool(tokens - meta["name_tokens"])
+            )
             score = 2 if (nick_hit and name_hit) else 1
-            candidates.append((score, name_hit, meta["member"], item["raw"]))
+            confident = (score == 2) or (score == 1 and name_hit and not nickname_conflict)
+            candidates.append((score, confident, meta["member"], item["raw"]))
 
         if not candidates:
             continue
@@ -127,11 +138,9 @@ def match_submitters(
         top_score = candidates[0][0]
         top = [c for c in candidates if c[0] == top_score]
 
-        if len(top) == 1 and (top[0][0] == 2 or top[0][1]):
+        if len(top) == 1 and top[0][1]:
             matched_ids.add(str(top[0][2]["id"]))
             top[0][2]["_matched_raw"] = top[0][3]
-        elif len(top) == 1:
-            ambiguous.append({"raw": item["raw"], "candidates": [top[0][2]]})
         else:
             ambiguous.append({"raw": item["raw"], "candidates": [c[2] for c in top]})
 
