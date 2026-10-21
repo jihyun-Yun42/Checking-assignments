@@ -133,6 +133,27 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="logout-confirm-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">로그아웃</p>
+      <p class="modal-desc">로그아웃하시겠어요? 다시 로그인하려면 휴대폰 번호를 입력해야 해요.</p>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="logout-confirm-cancel">취소</button>
+        <button type="button" class="modal-btn modal-btn-save" id="logout-confirm-ok">로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="info-modal" hidden>
+    <div class="modal-box">
+      <p class="modal-title">알림</p>
+      <p class="modal-desc" id="info-modal-desc"></p>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-save" id="info-modal-ok">확인</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     (function () {
       var DATA_URL = {{ url_for('dashboard_data') | tojson }};
@@ -154,6 +175,22 @@
         div.textContent = s == null ? '' : s;
         return div.innerHTML;
       }
+
+      // ---------- 알림 팝업 (window.alert() 대체) ----------
+      var infoModal = document.getElementById('info-modal');
+      var infoModalDesc = document.getElementById('info-modal-desc');
+      var infoModalOk = document.getElementById('info-modal-ok');
+      function showInfoModal(message) {
+        infoModalDesc.textContent = message == null ? '' : message;
+        infoModal.hidden = false;
+      }
+      function closeInfoModal() {
+        infoModal.hidden = true;
+      }
+      infoModalOk.addEventListener('click', closeInfoModal);
+      infoModal.addEventListener('click', function (e) {
+        if (e.target === infoModal) closeInfoModal();
+      });
 
       function renderSkeleton() {
         metaEl.textContent = '불러오는 중…';
@@ -252,11 +289,23 @@
       });
 
       var logoutForm = document.getElementById('logout-form');
+      var logoutConfirmModal = document.getElementById('logout-confirm-modal');
+      var logoutConfirmOkBtn = document.getElementById('logout-confirm-ok');
+      var logoutConfirmCancelBtn = document.getElementById('logout-confirm-cancel');
       if (logoutForm) {
         logoutForm.addEventListener('submit', function (e) {
-          if (!window.confirm('로그아웃하시겠어요? 다시 로그인하려면 휴대폰 번호를 입력해야 해요.')) {
-            e.preventDefault();
-          }
+          e.preventDefault();
+          logoutConfirmModal.hidden = false;
+        });
+        logoutConfirmOkBtn.addEventListener('click', function () {
+          logoutConfirmModal.hidden = true;
+          logoutForm.submit();
+        });
+        logoutConfirmCancelBtn.addEventListener('click', function () {
+          logoutConfirmModal.hidden = true;
+        });
+        logoutConfirmModal.addEventListener('click', function (e) {
+          if (e.target === logoutConfirmModal) logoutConfirmModal.hidden = true;
         });
       }
 
@@ -306,7 +355,7 @@
             }
             if (!data.ok) {
               setRenamingState(memberId, false);
-              alert(data.error || '저장하지 못했습니다. 다시 시도해주세요.');
+              showInfoModal(data.error || '저장하지 못했습니다. 다시 시도해주세요.');
               return;
             }
             // 화면을 스켈레톤으로 비웠다가 다시 채우면 '새로고침'처럼 보이므로,
@@ -316,7 +365,7 @@
           })
           .catch(function () {
             setRenamingState(memberId, false);
-            alert('네트워크 오류로 저장하지 못했습니다. 다시 시도해주세요.');
+            showInfoModal('네트워크 오류로 저장하지 못했습니다. 다시 시도해주세요.');
           });
       }
 
