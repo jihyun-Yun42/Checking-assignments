@@ -24,13 +24,14 @@ app.secret_key = config.FLASK_SECRET_KEY
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=365)
 
 
-def _exclude_coach_accounts(names):
+def _exclude_staff_accounts(names):
     # "전체 명단"(all_chat_senders)을 읽을 때마다 거치는 안전망 — 이미 저장된
-    # 과거 데이터에 coach_ 계정이 남아있어도(이 필터를 추가하기 전에 분석된
-    # 날짜), 화면에 보여줄 때는 여기서 한 번 더 걸러준다. 새로 분석되는
-    # 날짜는 hamummal_parser.extract_all_chat_participants에서 애초에
-    # 빠지므로 저장 단계부터 깨끗하다.
-    return [n for n in (names or []) if not str(n).lower().startswith("coach_")]
+    # 과거 데이터에 coach_/staff_ 계정이 남아있어도(이 필터를 추가하기 전에
+    # 분석된 날짜), 화면에 보여줄 때는 여기서 한 번 더 걸러준다. 새로
+    # 분석되는 날짜는 hamummal_parser.extract_all_chat_participants에서
+    # 애초에 빠지므로 저장 단계부터 깨끗하다.
+    staff_prefixes = ("coach_", "staff_")
+    return [n for n in (names or []) if not str(n).lower().startswith(staff_prefixes)]
 
 
 @app.template_filter("hname")
@@ -863,7 +864,7 @@ def hamummal_review_content(review_id):
         members = db_client.active_members_by_team().get(my_team) or []
         live_entry = hamummal_dashboard.compute_team_entry(
             my_team, members, data["check_date"],
-            data.get("chat_senders") or [], _exclude_coach_accounts(data.get("all_chat_senders")),
+            data.get("chat_senders") or [], _exclude_staff_accounts(data.get("all_chat_senders")),
             data.get("submission_times") or {},
         )
         if live_entry is None:
@@ -905,7 +906,7 @@ def hamummal_review_content(review_id):
     # 적 있는 사람 전체 목록. 매칭 판정(그 날짜에 정말 보냈는지)에는 이게 아니라
     # 날짜별 chat_senders(entry 저장 시점의 그 날짜분)만 쓴다 — confirm-match/
     # fix-name 라우트가 리뷰를 다시 불러와서 그쪽에서 직접 꺼내 쓴다.
-    all_chat_senders = _exclude_coach_accounts(data.get("all_chat_senders"))
+    all_chat_senders = _exclude_staff_accounts(data.get("all_chat_senders"))
     matched_raw_names = [
         m.get("_matched_raw") for m in (entry.get("matched") or [])
         if m.get("_matched_raw")
