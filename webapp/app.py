@@ -738,16 +738,18 @@ def hamummal_review_roster_status():
         mid = str(m.get("id"))
         override_raw = overrides.get(mid)
         auto_raw = submitted_matched.get(mid) or hint_matched.get(mid)
-        # 실제 대화로 식별된 자동 매칭(제출 또는 힌트)이 있으면 그게 더
-        # 정확하다(이름/닉네임이 바뀌기 전에 일괄매칭으로 등록해둔 override가
-        # 오래돼서 틀어진 경우가 있다) — 자동 매칭을 우선으로 쓰고, 자동
-        # 매칭이 아예 없는 사람만 override로 보여준다.
-        matched_raw = auto_raw or override_raw
+        # 리더가 "수정" 버튼으로 직접 저장한 override는 명시적인 정정이니
+        # 항상 우선한다. (예전엔 반대로 자동 매칭을 우선시켰는데, 그러면
+        # 자동 매칭 자체가 틀렸을 때 — 예: 예전 매칭 로직 버그로 다른
+        # 사람에게 잘못 자동매칭된 경우 — 아무리 "수정"으로 고쳐도 저장된
+        # 틀린 자동값이 계속 다시 떠서 고칠 방법이 없었다.) override가 없는
+        # 사람만 자동 매칭을 보여준다.
+        matched_raw = override_raw or auto_raw
         people.append({
             "member_id": m.get("id"),
             "display": _hamummal_display_name(m),
             "matched_raw": matched_raw,
-            "auto": bool(auto_raw),
+            "auto": bool(auto_raw) and not override_raw,
         })
     people.sort(key=lambda p: p["display"])
     return jsonify(ok=True, people=people)
