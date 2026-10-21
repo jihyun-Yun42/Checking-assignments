@@ -55,6 +55,8 @@
   .bulk-status-row{display:flex;flex-direction:column;gap:5px;font-size:13px;padding:9px 0;
        border-bottom:1px dashed #f0f0f0}
   .bulk-status-row:last-child{border-bottom:none}
+  .bulk-status-row.row-updating{pointer-events:none;animation:name-pulse 1s ease-in-out infinite}
+  @keyframes name-pulse{0%,100%{opacity:.35}50%{opacity:.8}}
   .bulk-status-row .nm{min-width:0}
   .bulk-status-row .auto-tag{font-size:10px;color:#0a7a2f;background:#eafaf1;
        border-radius:999px;padding:1px 6px;margin-left:4px}
@@ -113,12 +115,15 @@
        background:#fff;color:#222}
   .fixname-list{height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;
        margin-bottom:14px}
-  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2}
+  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2;
+       display:flex;align-items:center;justify-content:space-between;gap:8px}
   .fixname-item:last-child{border-bottom:none}
   .fixname-item:hover{background:#f8f5ee}
   .fixname-item.fixname-item-active{background:#f8f5ee}
+  .unmatched-tag{color:#999;font-size:12px;flex-shrink:0}
   .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
-  .fixname-item.fixname-item-empty{color:#999;cursor:default}
+  .fixname-item.fixname-item-empty{color:#999;cursor:default;justify-content:center;
+       text-align:center;line-height:1.5}
   .fixname-item.fixname-item-empty:hover{background:none}
 
   .skeleton-line,.skeleton-card{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
@@ -157,8 +162,8 @@
     <div class="modal-box">
       <button type="button" class="modal-close-x" id="rawname-close" aria-label="닫기">✕</button>
       <p class="modal-title">카톡 이름 선택</p>
-      <p class="modal-desc">지금까지 분석된 날짜들의 카카오톡 소통방에서 실제로 메시지를 보낸 사람
-        목록이에요.<br>검색해서 고르면 바로 저장돼요. 목록에 없으면 직접 입력해서 저장할 수 있어요.</p>
+      <p class="modal-desc">지금까지 분석된 날짜들의 카카오톡 소통방에서 실제로 메시지를 보낸 사람&nbsp;목록이에요.<br>
+        검색해서 고르면 바로 저장돼요. 목록에 없으면 직접 입력해서 저장할 수 있어요.</p>
       <input type="text" id="rawname-search" placeholder="이름 검색" autocomplete="off">
       <div class="fixname-list" id="rawname-list"></div>
       <div class="modal-actions">
@@ -201,6 +206,7 @@
       var RESET_ALL_URL = {{ url_for('hamummal_review_bulk_match_reset_all') | tojson }};
 
       var ALL_RAW_NAMES = [];
+      var TEAM_MATCHED_RAW_SET = {};
 
       var runBtn = document.getElementById('bulk-match-run');
       var input = document.getElementById('bulk-match-input');
@@ -525,6 +531,12 @@
             }
             rosterStatusLoaded = true;
             ALL_RAW_NAMES = data.all_raw_names || [];
+            TEAM_MATCHED_RAW_SET = {};
+            (data.people || []).forEach(function (p) {
+              if (!p.matched_raw) return;
+              TEAM_MATCHED_RAW_SET[p.matched_raw] = true;
+              TEAM_MATCHED_RAW_SET[stripRoundSuffix(p.matched_raw)] = true;
+            });
             renderRosterStatus(data.people || []);
           })
           .catch(function () {
@@ -621,6 +633,16 @@
         return false;
       }
 
+      // "(5회)"처럼 매주 바뀌는 회차 번호만 떼고 비교하기 위한 함수.
+      // 회차만 다를 뿐 사실은 이미 우리 조에서 매칭된 사람을 놓치지 않기 위해 쓴다.
+      function stripRoundSuffix(s) {
+        return (s || '').replace(/\(\s*\d+\s*회?\s*차?\s*\)\s*$/, '').trim();
+      }
+
+      function isTeamMatchedRaw(name) {
+        return !!(TEAM_MATCHED_RAW_SET[name] || TEAM_MATCHED_RAW_SET[stripRoundSuffix(name)]);
+      }
+
       function closeRawNameModal() {
         rawNameModal.hidden = true;
         rawNameTargetMemberId = null;
@@ -636,7 +658,18 @@
         matches.forEach(function (name) {
           var item = document.createElement('div');
           item.className = 'fixname-item';
-          item.textContent = name;
+
+          var nameSpan = document.createElement('span');
+          nameSpan.textContent = name;
+          item.appendChild(nameSpan);
+
+          if (isTeamMatchedRaw(name)) {
+            var tag = document.createElement('span');
+            tag.className = 'unmatched-tag';
+            tag.textContent = '(우리 조원)';
+            item.appendChild(tag);
+          }
+
           item.addEventListener('click', function () { chooseRawName(name); });
           rawNameList.appendChild(item);
         });
@@ -685,16 +718,29 @@
         rawNameSearch.focus();
       }
 
+      function setRosterRowUpdating(memberId, on) {
+        var row = statusEl.querySelector('.bulk-status-row[data-member-id="' + memberId + '"]');
+        if (row) row.classList.toggle('row-updating', on);
+      }
+
       function chooseRawName(raw) {
         if (!rawNameTargetMemberId) return;
         var memberId = rawNameTargetMemberId;
         closeRawNameModal();
+        // 팝업이 꺼진 뒤부터 서버 응답이 올 때까지, 그 조원 행을 깜빡이게 해서
+        // 지금 바뀌는 중이라는 걸 보여주고 다시 누르지 못하게 막는다. 성공하면
+        // loadRosterStatus()가 목록을 통째로 다시 그리면서 자연히 없어지고,
+        // 실패/취소하면 여기서 직접 풀어준다.
+        setRosterRowUpdating(memberId, true);
         doResolve(memberId, raw, false, function (d) {
           showToast('매칭 완료' + fixedDatesSuffix(d.fixed_dates));
           loadRosterStatus();
         }, function (errMsg) {
+          setRosterRowUpdating(memberId, false);
           showToast(errMsg || '매칭하지 못했어요.');
-        }, function () {});
+        }, function () {
+          setRosterRowUpdating(memberId, false);
+        });
       }
 
       rawNameSearch.addEventListener('input', function () {

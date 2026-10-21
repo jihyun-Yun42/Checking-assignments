@@ -72,6 +72,8 @@
   .fixname-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;
        text-decoration-color:#ccc}
   .fixname-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
+  .row.row-updating{pointer-events:none;animation:name-pulse 1s ease-in-out infinite}
+  @keyframes name-pulse{0%,100%{opacity:.35}50%{opacity:.8}}
 
   #fixname-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
        border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
@@ -679,14 +681,22 @@
         }
       }
 
+      function setMemberRowUpdating(target, on) {
+        var row = target.teamEl.querySelector('.row[data-member-id="' + target.memberId + '"]');
+        if (row) row.classList.toggle('row-updating', on);
+      }
+
       function submitFixName(rawNewName) {
         if (!fixnameTarget) return;
         var target = fixnameTarget;
         var newName = rawNewName.trim();
         if (!newName) return;
 
-        fixnameList.style.pointerEvents = 'none';
-        fixnameList.style.opacity = '.5';
+        closeFixnameModal();
+        // 팝업이 꺼진 뒤부터 서버 응답이 올 때까지, 그 조원 행을 깜빡이게 해서
+        // 지금 바뀌는 중이라는 걸 보여주고 다시 누르지 못하게 막는다. 아래
+        // 분기들이 그 행을 바꿔 그리든 그대로 두든, finally에서 한 번에 풀어준다.
+        setMemberRowUpdating(target, true);
 
         fetch(FIX_NAME_URL, {
           method: 'POST',
@@ -700,8 +710,6 @@
               showInfoModal(data.error || '저장하지 못했습니다.');
               return;
             }
-
-            closeFixnameModal();
 
             var teamEl = target.teamEl;
             var team = target.team, memberId = target.memberId;
@@ -769,8 +777,7 @@
             showInfoModal('네트워크 오류로 저장하지 못했습니다.');
           })
           .finally(function () {
-            fixnameList.style.pointerEvents = '';
-            fixnameList.style.opacity = '';
+            setMemberRowUpdating(target, false);
           });
       }
 
