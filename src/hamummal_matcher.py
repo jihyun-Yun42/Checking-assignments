@@ -1,6 +1,6 @@
 import re
 
-_ROUND_RE = re.compile(r"\((\d+)\s*회?\s*차?\)\s*$")
+_ROUND_RE = re.compile(r"\((\d+)\s*회?\s*차?\)\s*$|(\d+)\s*(?:회|차)\s*$")
 _NOISE_RE = re.compile(
     r"[❤️💙\U0001F300-\U0001FAFF☀-➿️]"
 )
@@ -32,11 +32,27 @@ def _normalize_tokens(s: str, protect: frozenset = frozenset()) -> set:
     return tokens - (_SURNAME_STOPWORDS - protect)
 
 
+def _nick_fuzzy_match(a: str, b: str) -> bool:
+    """
+    닉네임 토큰 두 개가 글자 그대로는 다르지만(대소문자는 토큰화 단계에서
+    이미 소문자로 맞춰져 있다), 한쪽이 다른 쪽에 그대로 포함되면서 그
+    겹치는 길이가 더 짧은 쪽 글자 수의 절반 이상이면(예: "olivia" vs
+    "olivia11") 같은 닉네임을 표기만 다르게 적은 걸로 본다.
+    """
+    if not a or not b or a == b:
+        return a == b
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    if len(shorter) < 2 or shorter not in longer:
+        return False
+    return len(shorter) * 2 >= len(longer)
+
+
 def _strip_round(raw: str):
     body = raw.strip()
     m = _ROUND_RE.search(body)
     if m:
-        return body[: m.start()].strip(), int(m.group(1))
+        num = m.group(1) or m.group(2)
+        return body[: m.start()].strip(), int(num)
     return body, None
 
 
@@ -121,12 +137,20 @@ def match_submitters(
             # 원문은 "박수연_jenni") — 이 조원에게 등록된 닉네임이 있는데 원문엔
             # 그 닉네임이 전혀 안 보이고, 실명 말고 남는 토큰(= 다른 닉네임일
             # 가능성)이 있으면 실명만 보고 바로 확정 매칭하면 안 된다("닉네임이
-            # 다르면 확인을 한번 거쳐야해" — 바로 이 경우). 완전히 후보에서
-            # 빼지는 않고 "확인 필요"로 남겨서 리더가 직접 확인하게 한다.
-            nickname_conflict = (
-                name_hit and not nick_hit and meta["nick_tokens"]
-                and bool(tokens - meta["name_tokens"])
-            )
+            # 다르면 확인을 한번 거쳐야해" — 바로 이 경우). 다만 남는 토큰이
+            # 등록된 닉네임과 글자가 절반 이상 겹치면(예: "Olivia" vs
+            # "Olivia11") 표기만 다를 뿐 같은 닉네임으로 보고 그대로 확정한다.
+            nickname_conflict = False
+            if name_hit and not nick_hit and meta["nick_tokens"]:
+                leftover = tokens - meta["name_tokens"]
+                if leftover:
+                    if any(
+                        _nick_fuzzy_match(t, nt)
+                        for t in leftover for nt in meta["nick_tokens"]
+                    ):
+                        nick_hit = True
+                    else:
+                        nickname_conflict = True
             score = 2 if (nick_hit and name_hit) else 1
             confident = (score == 2) or (score == 1 and name_hit and not nickname_conflict)
             candidates.append((score, confident, meta["member"], item["raw"]))
