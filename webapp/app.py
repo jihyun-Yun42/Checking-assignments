@@ -722,6 +722,7 @@ def hamummal_review_roster_status():
     # 원래 별개다. 실제 제출로 확인된 쪽이 더 확실하니 그쪽을 우선한다.
     submitted_matched = {}
     hint_matched = {}
+    all_raw_names_set = set()
     rows = db_client.list_team_reviews(my_team)
     for row in rows:
         entry = (row.get("review") or {}).get(my_team) or {}
@@ -733,6 +734,10 @@ def hamummal_review_roster_status():
             raw = m.get("_known_raw")
             if raw:
                 hint_matched[str(m.get("id"))] = raw
+        # 조원 이름을 눌렀을 때 뜨는 "카톡 이름 선택" 팝업 검색용 — 날짜
+        # 상관없이 지금까지 분석된 모든 날짜의 소통방 참가자 전체를 모아둔다.
+        all_raw_names_set.update(row.get("all_chat_senders") or [])
+    all_raw_names = sorted(_exclude_staff_accounts(all_raw_names_set))
 
     people = []
     for m in roster:
@@ -753,7 +758,7 @@ def hamummal_review_roster_status():
             "auto": bool(auto_raw) and not override_raw,
         })
     people.sort(key=lambda p: p["display"])
-    return jsonify(ok=True, people=people)
+    return jsonify(ok=True, people=people, all_raw_names=all_raw_names)
 
 
 def _submitted_at_24h(raw):

@@ -58,6 +58,8 @@
   .bulk-status-row .nm{min-width:0}
   .bulk-status-row .auto-tag{font-size:10px;color:#0a7a2f;background:#eafaf1;
        border-radius:999px;padding:1px 6px;margin-left:4px}
+  .bulk-name-trigger{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+  .bulk-name-trigger:hover{color:#8a5a00;text-decoration-color:#8a5a00}
   .bulk-status-controls{display:flex;align-items:center;gap:6px}
   .bulk-status-input{flex:1 1 auto;min-width:0;padding:7px 8px;font-size:13px;
        border:1px solid #ddd;border-radius:6px;font-family:inherit;
@@ -101,6 +103,18 @@
   .modal-btn-cancel{background:#eee;color:#333}
   .modal-btn-save{background:#c0392b;color:#fff}
 
+  #rawname-search{width:100%;padding:10px;font-size:15px;margin-bottom:10px;
+       border:1px solid #ddd;border-radius:8px;font-family:inherit;box-sizing:border-box;
+       background:#fff;color:#222}
+  .fixname-list{height:260px;overflow-y:auto;border:1px solid #eee;border-radius:8px;
+       margin-bottom:14px}
+  .fixname-item{padding:11px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid #f2f2f2}
+  .fixname-item:last-child{border-bottom:none}
+  .fixname-item:hover{background:#f8f5ee}
+  .fixname-item.fixname-item-manual{color:#8a5a00;font-weight:bold}
+  .fixname-item.fixname-item-empty{color:#999;cursor:default}
+  .fixname-item.fixname-item-empty:hover{background:none}
+
   .skeleton-line,.skeleton-card{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%);
        background-size:400% 100%;animation:skeleton-shimmer 1.4s ease infinite;border-radius:8px}
   .skeleton-line{height:14px;margin-bottom:10px;width:40%}
@@ -129,6 +143,20 @@
   <p class="board-title">조원 매칭 현황</p>
   <div id="bulk-roster-status"></div>
 
+  <div class="modal-overlay" id="rawname-modal" hidden>
+    <div class="modal-box">
+      <button type="button" class="modal-close-x" id="rawname-close" aria-label="닫기">✕</button>
+      <p class="modal-title">카톡 이름 선택</p>
+      <p class="modal-desc">지금까지 분석된 날짜들의 카카오톡 소통방에서 실제로 메시지를 보낸 사람
+        목록이에요.<br>검색해서 고르면 바로 저장돼요. 목록에 없으면 직접 입력해서 저장할 수 있어요.</p>
+      <input type="text" id="rawname-search" placeholder="이름 검색" autocomplete="off">
+      <div class="fixname-list" id="rawname-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn modal-btn-cancel" id="rawname-cancel">취소</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="conflict-modal" hidden>
     <div class="modal-box">
       <button type="button" class="modal-close-x" id="conflict-modal-close" aria-label="닫기">✕</button>
@@ -147,6 +175,8 @@
       var BULK_MATCH_URL = {{ url_for('hamummal_review_bulk_match_names') | tojson }};
       var BULK_RESOLVE_URL = {{ url_for('hamummal_review_bulk_match_resolve') | tojson }};
       var ROSTER_STATUS_URL = {{ url_for('hamummal_review_roster_status') | tojson }};
+
+      var ALL_RAW_NAMES = [];
 
       var runBtn = document.getElementById('bulk-match-run');
       var input = document.getElementById('bulk-match-input');
@@ -470,6 +500,7 @@
               return;
             }
             rosterStatusLoaded = true;
+            ALL_RAW_NAMES = data.all_raw_names || [];
             renderRosterStatus(data.people || []);
           })
           .catch(function () {
@@ -482,7 +513,8 @@
       function statusRowHtml(p) {
         var autoTag = p.auto ? '<span class="auto-tag">자동</span>' : '';
         return '<div class="bulk-status-row" data-member-id="' + p.member_id + '">' +
-          '<span class="nm">' + escapeHtml(p.display) + autoTag + '</span>' +
+          '<span class="nm bulk-name-trigger" role="button" tabindex="0" data-member-id="' + p.member_id + '">' +
+          escapeHtml(p.display) + autoTag + '</span>' +
           '<div class="bulk-status-controls">' +
           '<input type="text" class="bulk-status-input" placeholder="카톡 이름" value="' +
           escapeHtml(p.matched_raw || '') + '">' +
@@ -518,7 +550,125 @@
         window.scrollTo(scrollX, scrollY);
       }
 
+      // ---------- 카톡 이름 선택 팝업 (조원 이름을 누르면 뜸) ----------
+
+      var rawNameModal = document.getElementById('rawname-modal');
+      var rawNameSearch = document.getElementById('rawname-search');
+      var rawNameList = document.getElementById('rawname-list');
+      var rawNameCancel = document.getElementById('rawname-cancel');
+      var rawNameClose = document.getElementById('rawname-close');
+      var rawNameTargetMemberId = null;
+
+      // 초성(ㅇ, ㅈ 등)만 입력해도, 또는 글자+초성을 섞어 입력해도 찾을 수
+      // 있게 하는 한글 자모 느슨한 검색 ("이름 고치기" 팝업과 동일한 로직).
+      var CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
+      function hangulChosung(ch) {
+        var code = ch.charCodeAt(0) - 0xAC00;
+        if (code < 0 || code > 11171) return null;
+        return CHOSUNG_LIST[Math.floor(code / 588)];
+      }
+
+      function charMatches(queryChar, targetChar) {
+        if (!targetChar) return false;
+        if (queryChar.toLowerCase() === targetChar.toLowerCase()) return true;
+        if (CHOSUNG_LIST.indexOf(queryChar) !== -1) {
+          return hangulChosung(targetChar) === queryChar;
+        }
+        return false;
+      }
+
+      function fuzzyKoreanIncludes(target, query) {
+        if (!query) return true;
+        target = target || '';
+        for (var start = 0; start <= target.length - query.length; start++) {
+          var ok = true;
+          for (var i = 0; i < query.length; i++) {
+            if (!charMatches(query[i], target[start + i])) { ok = false; break; }
+          }
+          if (ok) return true;
+        }
+        return false;
+      }
+
+      function closeRawNameModal() {
+        rawNameModal.hidden = true;
+        rawNameTargetMemberId = null;
+      }
+
+      function renderRawNameList() {
+        var q = rawNameSearch.value.trim();
+        var matches = ALL_RAW_NAMES.filter(function (name) {
+          return fuzzyKoreanIncludes(name, q);
+        });
+
+        rawNameList.innerHTML = '';
+        matches.forEach(function (name) {
+          var item = document.createElement('div');
+          item.className = 'fixname-item';
+          item.textContent = name;
+          item.addEventListener('click', function () { chooseRawName(name); });
+          rawNameList.appendChild(item);
+        });
+
+        if (q && ALL_RAW_NAMES.indexOf(q) === -1) {
+          var manual = document.createElement('div');
+          manual.className = 'fixname-item fixname-item-manual';
+          manual.textContent = '"' + q + '" (으)로 직접 입력해서 저장';
+          manual.addEventListener('click', function () { chooseRawName(q); });
+          rawNameList.appendChild(manual);
+        }
+
+        if (matches.length === 0 && !q) {
+          var empty = document.createElement('div');
+          empty.className = 'fixname-item fixname-item-empty';
+          empty.textContent = '카톡에서 식별된 이름이 아직 없어요. 검색창에 이름을 입력해서 직접 저장할 수 있어요.';
+          rawNameList.appendChild(empty);
+        }
+      }
+
+      function openRawNameModal(memberId) {
+        rawNameTargetMemberId = memberId;
+        rawNameSearch.value = '';
+        renderRawNameList();
+        rawNameModal.hidden = false;
+        rawNameSearch.focus();
+      }
+
+      function chooseRawName(raw) {
+        if (!rawNameTargetMemberId) return;
+        var memberId = rawNameTargetMemberId;
+        closeRawNameModal();
+        doResolve(memberId, raw, false, function (d) {
+          showToast('매칭 완료' + fixedDatesSuffix(d.fixed_dates));
+          loadRosterStatus();
+        }, function (errMsg) {
+          showToast(errMsg || '매칭하지 못했어요.');
+        }, function () {});
+      }
+
+      rawNameSearch.addEventListener('input', renderRawNameList);
+      rawNameSearch.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var first = rawNameList.querySelector('.fixname-item:not(.fixname-item-empty)');
+        if (first) first.click();
+      });
+      rawNameCancel.addEventListener('click', closeRawNameModal);
+      rawNameClose.addEventListener('click', closeRawNameModal);
+      rawNameModal.addEventListener('click', function (e) {
+        if (e.target === rawNameModal) closeRawNameModal();
+      });
+
       function wireRosterStatusButtons() {
+        statusEl.querySelectorAll('.bulk-name-trigger').forEach(function (trigger) {
+          trigger.addEventListener('click', function () {
+            openRawNameModal(trigger.getAttribute('data-member-id'));
+          });
+          trigger.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); trigger.click(); }
+          });
+        });
         statusEl.querySelectorAll('.bulk-status-save-btn').forEach(function (btn) {
           btn.addEventListener('click', function () {
             var row = btn.closest('.bulk-status-row');

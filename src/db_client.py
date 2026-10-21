@@ -484,7 +484,7 @@ def list_team_reviews(team: str) -> list:
         '''
         SELECT DISTINCT ON (check_date)
             id, to_char(check_date, 'YYYY-MM-DD') AS check_date,
-            review, applied_teams, chat_senders
+            review, applied_teams, chat_senders, all_chat_senders
         FROM hamummal_reviews
         WHERE review ? %s
         ORDER BY check_date, created_at DESC
