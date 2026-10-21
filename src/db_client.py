@@ -613,3 +613,53 @@ def list_hamummal_activity_log(limit: int = 300, team: str = None, event_type: s
         ''',
         tuple(params),
     )
+
+
+def add_hamummal_feedback(team: str, member: dict, content: str) -> None:
+    # "오류제보 및 업데이트 내역" 페이지에서 조장/부조장이 남기는 버그/문제
+    # 제보. member는 session["phone"]으로 조회한 로그인 멤버 dict.
+    _query(
+        '''
+        INSERT INTO hamummal_feedback (team, member_name, member_phone, content)
+        VALUES (%s, %s, %s, %s)
+        ''',
+        (str(team), (member or {}).get("이름"), (member or {}).get("휴대폰번호"), content),
+        fetch="none",
+    )
+
+
+def list_hamummal_feedback(limit: int = 200) -> list:
+    return _query(
+        '''
+        SELECT
+            id, team, member_name, member_phone, content,
+            to_char(created_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at
+        FROM hamummal_feedback
+        ORDER BY created_at DESC
+        LIMIT %s
+        ''',
+        (limit,),
+    )
+
+
+def add_hamummal_changelog(content: str) -> None:
+    # 관리자(지현)가 "업데이트 내역 작성" 페이지에서 적는 변경사항 공지.
+    _query(
+        "INSERT INTO hamummal_changelog (content) VALUES (%s)",
+        (content,),
+        fetch="none",
+    )
+
+
+def list_hamummal_changelog(limit: int = 100) -> list:
+    return _query(
+        '''
+        SELECT
+            id, content,
+            to_char(created_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at
+        FROM hamummal_changelog
+        ORDER BY created_at DESC
+        LIMIT %s
+        ''',
+        (limit,),
+    )

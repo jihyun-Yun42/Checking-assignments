@@ -99,3 +99,22 @@ CREATE TABLE IF NOT EXISTS hamummal_activity_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS hamummal_activity_log_created_at_idx ON hamummal_activity_log (created_at DESC);
+
+-- 조장/부조장이 "오류제보 및 업데이트 내역" 페이지에서 남기는 버그/문제 제보.
+CREATE TABLE IF NOT EXISTS hamummal_feedback (
+    id SERIAL PRIMARY KEY,
+    team TEXT,                                  -- 제보한 사람의 조
+    member_name TEXT,                           -- 제보한 사람 이름
+    member_phone TEXT,                          -- 제보한 사람 휴대폰번호
+    content TEXT NOT NULL,                      -- 제보 내용
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hamummal_feedback_created_at_idx ON hamummal_feedback (created_at DESC);
+
+-- 관리자(지현)가 "오류제보 및 업데이트 내역" 페이지 하단에 보여줄 업데이트 공지.
+CREATE TABLE IF NOT EXISTS hamummal_changelog (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,                      -- 업데이트 내용
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hamummal_changelog_created_at_idx ON hamummal_changelog (created_at DESC);

@@ -307,6 +307,32 @@ def hamummal_upload_activity_log():
     )
 
 
+@app.route("/hamummal-review/changelog/new", methods=["GET", "POST"])
+def hamummal_changelog_editor():
+    # "하멈말 사용 로그" 페이지에서 들어오는, 관리자(지현)가 업데이트 내역을
+    # 적어두는 페이지. 조장 누구나 URL을 알면 들어올 순 있지만(로그인은
+    # 필요), 사용 로그 페이지 자체가 따로 링크돼 있지 않아서 사실상 관리자만
+    # 찾아온다.
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+
+    if request.method == "POST":
+        content = (request.form.get("content") or "").strip()
+        if not content:
+            flash("내용을 입력해주세요.")
+            return redirect(url_for("hamummal_changelog_editor"))
+        try:
+            db_client.add_hamummal_changelog(content)
+            flash("업데이트 내역에 추가했어요.", "success")
+        except Exception:
+            flash("저장하지 못했어요. 잠시 후 다시 시도해주세요.")
+        return redirect(url_for("hamummal_changelog_editor"))
+
+    changelog = db_client.list_hamummal_changelog(limit=100)
+    return render_template("hamummal_changelog_editor.html", changelog=changelog)
+
+
 @app.route("/hamummal-upload", methods=["GET", "POST"])
 def hamummal_upload():
     cohort = _active_cohort_or_none()
@@ -453,6 +479,31 @@ def hamummal_review_bulk_match_page():
     except Exception:
         pass
     return render_template("hamummal_bulk_match.html", team=str(member.get("조")))
+
+
+@app.route("/hamummal-review/feedback", methods=["GET", "POST"])
+def hamummal_review_feedback():
+    # 조장/부조장이 오류/문제를 바로 제보할 수 있는 페이지. 밑에는 관리자가
+    # "업데이트 내역 작성" 페이지에서 적어둔 공지를 그대로 보여준다.
+    member = _current_member_or_none()
+    if not member:
+        return redirect(url_for("phone_entry"))
+    my_team = str(member.get("조"))
+
+    if request.method == "POST":
+        content = (request.form.get("content") or "").strip()
+        if not content:
+            flash("내용을 입력해주세요.")
+            return redirect(url_for("hamummal_review_feedback"))
+        try:
+            db_client.add_hamummal_feedback(my_team, member, content)
+            flash("제보해주셔서 감사해요! 확인하고 반영할게요.", "success")
+        except Exception:
+            flash("제보를 저장하지 못했어요. 잠시 후 다시 시도해주세요.")
+        return redirect(url_for("hamummal_review_feedback"))
+
+    changelog = db_client.list_hamummal_changelog(limit=100)
+    return render_template("hamummal_feedback.html", changelog=changelog)
 
 
 def _team_attendance(team: str):
