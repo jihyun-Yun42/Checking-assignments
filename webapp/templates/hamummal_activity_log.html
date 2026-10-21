@@ -58,7 +58,7 @@
   <p class="hint">조원이 결과확인 페이지를 언제 봤는지, 관리자 작업(업로드·초기화·삭제 등)을 누가
      언제 했는지 기록이에요. 최근 300건까지만 보여줘요.</p>
   <p class="hint"><a href="{{ url_for('hamummal_upload') }}">← 하멈말 관리로 돌아가기</a>
-    · <a href="{{ url_for('hamummal_changelog_editor') }}">📝 업데이트 내역 작성</a></p>
+    · <a href="{{ url_for('hamummal_changelog_editor') }}">📝 업데이트 내역 작성</a> · <a href="{{ url_for('hamummal_review_feedback_admin') }}">🛠️ 오류 제보함</a></p>
 
   <form class="filter-form" method="get" action="{{ url_for('hamummal_upload_activity_log') }}">
     <input type="text" name="team" placeholder="조 이름으로 필터 (예:달리조)" value="{{ team }}">

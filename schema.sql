@@ -118,3 +118,15 @@ CREATE TABLE IF NOT EXISTS hamummal_changelog (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS hamummal_changelog_created_at_idx ON hamummal_changelog (created_at DESC);
+
+-- 오류 제보에 첨부한 사진들. 서버리스/로컬 재배포 환경을 오가도 파일이
+-- 사라지지 않도록(과거에도 이 이유로 로컬 디스크 대신 Postgres를 썼다)
+-- 이미지 바이트를 그대로 DB에 저장한다.
+CREATE TABLE IF NOT EXISTS hamummal_feedback_images (
+    id SERIAL PRIMARY KEY,
+    feedback_id INTEGER NOT NULL REFERENCES hamummal_feedback(id) ON DELETE CASCADE,
+    content_type TEXT NOT NULL,
+    data BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hamummal_feedback_images_feedback_id_idx ON hamummal_feedback_images (feedback_id);

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwMDAwMDAiLz48dGV4dCB4PSIzMiIgeT0iNDYiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEhlbHZldGljYSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjM4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5KPC90ZXh0Pjwvc3ZnPg==">
+<title>오류 제보 목록 (관리자)</title>
+<style>
+  html{color-scheme:light}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       max-width:640px;margin:40px auto;padding:0 20px;color:#222;background:#fff}
+  h1{font-size:19px;margin:0 0 4px}
+  .back-link{margin-bottom:6px}
+  .back-link a{font-size:13px;color:#888;text-decoration:none}
+  .back-link a:hover{text-decoration:underline}
+  .desc{font-size:13px;color:#666;line-height:1.5;margin:8px 0 18px}
+
+  .feedback-item{padding:14px 0;border-bottom:1px solid #f0f0f0}
+  .feedback-item:last-child{border-bottom:none}
+  .feedback-meta{font-size:12px;color:#999;margin-bottom:6px}
+  .feedback-meta .team{color:#8a6100;font-weight:bold}
+  .feedback-content{font-size:14px;line-height:1.6;white-space:pre-line;margin-bottom:8px}
+
+  .feedback-images{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .feedback-images a{display:block;width:84px;height:84px;border-radius:8px;overflow:hidden;
+       border:1px solid #eee;flex-shrink:0}
+  .feedback-images img{width:100%;height:100%;object-fit:cover;display:block}
+
+  .empty{font-size:13px;color:#888;margin-top:14px}
+</style>
+</head>
+<body>
+  <p class="back-link"><a href="{{ url_for('hamummal_upload_activity_log') }}">← 하멈말 사용 로그로 돌아가기</a></p>
+  <h1>📮 오류 제보 목록</h1>
+  <p class="desc">조원들이 "오류제보 및 업데이트 내역" 페이지에서 보낸 제보예요. 최근 제보가 위에 먼저 보여요.</p>
+
+  {% if feedback_list %}
+    {% for row in feedback_list %}
+      <div class="feedback-item">
+        <div class="feedback-meta">
+          {{ row.created_at[:16].replace('T', ' ') }} ·
+          <span class="team">{{ row.team }}조</span>
+          {{ row.member_name or '' }}
+        </div>
+        <div class="feedback-content">{{ row.content }}</div>
+        {% if row.image_ids %}
+          <div class="feedback-images">
+            {% for image_id in row.image_ids %}
+              <a href="{{ url_for('hamummal_feedback_image', image_id=image_id) }}" target="_blank" rel="noopener">
+                <img src="{{ url_for('hamummal_feedback_image', image_id=image_id) }}" alt="첨부 사진" loading="lazy">
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">아직 들어온 제보가 없어요.</p>
+  {% endif %}
+</body>
+</html>

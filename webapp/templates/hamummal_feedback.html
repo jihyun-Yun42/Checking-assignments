@@ -20,7 +20,22 @@
   #feedback-content{width:100%;box-sizing:border-box;padding:10px;font-size:14px;
        border:1px solid #ddd;border-radius:8px;font-family:inherit;resize:vertical;
        background:#fff;color:#222;min-height:88px}
-  .feedback-submit{margin-top:8px;border:none;border-radius:8px;background:#3C1E1E;color:#fff;
+
+  .feedback-image-label{display:inline-block;margin-top:12px;font-size:13px;color:#8a6100;
+       border:1px solid #d8c48a;border-radius:999px;padding:7px 14px;cursor:pointer;background:#fff}
+  .feedback-image-label:hover{background:#fdf3dd}
+  #feedback-images{display:none}
+  .feedback-image-hint{font-size:12px;color:#999;margin:6px 0 0}
+
+  .feedback-preview{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .feedback-preview-item{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;
+       border:1px solid #eee;flex-shrink:0}
+  .feedback-preview-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .feedback-preview-remove{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;
+       border:none;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;
+       padding:0;cursor:pointer}
+
+  .feedback-submit{display:block;margin-top:14px;border:none;border-radius:8px;background:#3C1E1E;color:#fff;
        font-weight:bold;font-size:14px;padding:10px 16px;cursor:pointer}
 
   .section-divider{border:none;border-top:1px solid #eee;margin:24px 0 14px}
@@ -46,8 +61,13 @@
 
   <h2 class="section-h2">오류 제보</h2>
   <p class="desc">하멈말 쓰다가 이상하거나 틀린 게 있으면 편하게 적어주세요. 확인하고 고칠게요.</p>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data" id="feedback-form">
     <textarea id="feedback-content" name="content" placeholder="예: OO님이 다른 사람으로 잘못 매칭돼요 / 버튼이 눌러지지 않아요" required></textarea>
+    <br>
+    <label class="feedback-image-label" for="feedback-images">📷 사진 첨부</label>
+    <input type="file" id="feedback-images" name="images" accept="image/*" multiple>
+    <p class="feedback-image-hint">화면 캡처 같은 사진이 있으면 첨부해주세요. 여러 장도 가능해요(최대 6장).</p>
+    <div class="feedback-preview" id="feedback-preview"></div>
     <button type="submit" class="feedback-submit">제보하기</button>
   </form>
 
@@ -71,25 +91,83 @@
 
   <script>
     (function () {
-      var messages = [
-        {% for category, message in get_flashed_messages(with_categories=true) %}
-          {text: {{ message|tojson }}, category: {{ category|tojson }}},
-        {% endfor %}
-      ];
-      if (!messages.length) return;
       var toast = document.getElementById('toast');
-      var i = 0;
-      function showNext() {
-        if (i >= messages.length) return;
-        var m = messages[i++];
+      var toastQueue = [];
+      var toastShowing = false;
+
+      function showToast(text, isError) {
+        toastQueue.push({ text: text, isError: !!isError });
+        if (!toastShowing) showNextToast();
+      }
+
+      function showNextToast() {
+        if (!toastQueue.length) { toastShowing = false; return; }
+        toastShowing = true;
+        var m = toastQueue.shift();
         toast.textContent = m.text;
-        toast.className = 'toast show' + (m.category === 'success' ? '' : ' error');
+        toast.className = 'toast show' + (m.isError ? ' error' : '');
         setTimeout(function () {
           toast.classList.remove('show');
-          setTimeout(showNext, 300);
+          setTimeout(showNextToast, 300);
         }, 2600);
       }
-      showNext();
+
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        showToast({{ message|tojson }}, {{ (category != 'success')|tojson }});
+      {% endfor %}
+
+      // ---------- 사진 첨부: 여러 장 선택 + 미리보기 + 하나씩 제거 ----------
+      var MAX_IMAGES = 6;
+      var input = document.getElementById('feedback-images');
+      var preview = document.getElementById('feedback-preview');
+      var selectedFiles = [];
+
+      function syncInputFiles() {
+        var dt = new DataTransfer();
+        selectedFiles.forEach(function (f) { dt.items.add(f); });
+        input.files = dt.files;
+      }
+
+      function renderPreview() {
+        preview.innerHTML = '';
+        selectedFiles.forEach(function (file, idx) {
+          var url = URL.createObjectURL(file);
+          var item = document.createElement('div');
+          item.className = 'feedback-preview-item';
+
+          var img = document.createElement('img');
+          img.src = url;
+          img.alt = '첨부할 사진 미리보기';
+
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'feedback-preview-remove';
+          removeBtn.setAttribute('aria-label', '사진 빼기');
+          removeBtn.textContent = '×';
+          removeBtn.addEventListener('click', function () {
+            selectedFiles.splice(idx, 1);
+            syncInputFiles();
+            renderPreview();
+          });
+
+          item.appendChild(img);
+          item.appendChild(removeBtn);
+          preview.appendChild(item);
+        });
+      }
+
+      input.addEventListener('change', function () {
+        var picked = Array.prototype.slice.call(input.files || []);
+        var overflow = false;
+        picked.forEach(function (f) {
+          if (!f.type || f.type.indexOf('image/') !== 0) return;
+          if (selectedFiles.length >= MAX_IMAGES) { overflow = true; return; }
+          selectedFiles.push(f);
+        });
+        syncInputFiles();
+        renderPreview();
+        if (overflow) showToast('사진은 최대 ' + MAX_IMAGES + '장까지만 첨부할 수 있어요.', true);
+      });
     })();
   </script>
 </body>

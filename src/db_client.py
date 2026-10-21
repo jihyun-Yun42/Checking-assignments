@@ -615,21 +615,25 @@ def list_hamummal_activity_log(limit: int = 300, team: str = None, event_type: s
     )
 
 
-def add_hamummal_feedback(team: str, member: dict, content: str) -> None:
+def add_hamummal_feedback(team: str, member: dict, content: str) -> str:
     # "오류제보 및 업데이트 내역" 페이지에서 조장/부조장이 남기는 버그/문제
-    # 제보. member는 session["phone"]으로 조회한 로그인 멤버 dict.
-    _query(
+    # 제보. member는 session["phone"]으로 조회한 로그인 멤버 dict. 반환하는
+    # id는 같이 첨부한 사진들(hamummal_feedback_images)을 이 제보에 연결하는
+    # 데 쓴다.
+    row = _query(
         '''
         INSERT INTO hamummal_feedback (team, member_name, member_phone, content)
         VALUES (%s, %s, %s, %s)
+        RETURNING id
         ''',
         (str(team), (member or {}).get("이름"), (member or {}).get("휴대폰번호"), content),
-        fetch="none",
+        fetch="one",
     )
+    return row["id"]
 
 
 def list_hamummal_feedback(limit: int = 200) -> list:
-    return _query(
+    rows = _query(
         '''
         SELECT
             id, team, member_name, member_phone, content,
@@ -640,6 +644,46 @@ def list_hamummal_feedback(limit: int = 200) -> list:
         ''',
         (limit,),
     )
+    if not rows:
+        return rows
+    # 각 제보에 첨부된 사진 id들을 한 번에 모아서, 목록을 보여줄 때(관리자
+    # 페이지) 같이 붙여준다.
+    feedback_ids = tuple(r["id"] for r in rows)
+    image_rows = _query(
+        "SELECT id, feedback_id FROM hamummal_feedback_images WHERE feedback_id IN %s ORDER BY id",
+        (feedback_ids,),
+    )
+    images_by_feedback = {}
+    for img in image_rows:
+        images_by_feedback.setdefault(img["feedback_id"], []).append(img["id"])
+    for r in rows:
+        r["image_ids"] = images_by_feedback.get(r["id"], [])
+    return rows
+
+
+def add_hamummal_feedback_image(feedback_id, content_type: str, data: bytes) -> None:
+    _query(
+        '''
+        INSERT INTO hamummal_feedback_images (feedback_id, content_type, data)
+        VALUES (%s, %s, %s)
+        ''',
+        (feedback_id, content_type, psycopg2.Binary(data)),
+        fetch="none",
+    )
+
+
+def get_hamummal_feedback_image(image_id):
+    row = _query(
+        "SELECT content_type, data FROM hamummal_feedback_images WHERE id = %s",
+        (image_id,),
+        fetch="one",
+    )
+    if not row:
+        return None
+    data = row["data"]
+    # psycopg2는 bytea를 memoryview로 돌려준다 — Flask Response에 바로 넘기기
+    # 좋게 bytes로 바꿔둔다.
+    return {"content_type": row["content_type"], "data": bytes(data)}
 
 
 def add_hamummal_changelog(content: str) -> None:
