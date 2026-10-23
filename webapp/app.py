@@ -472,7 +472,7 @@ def hamummal_review_dates():
     dates = db_client.list_review_dates()
     return render_template(
         "hamummal_review_dates.html", dates=dates, today_str=now_kst().date().isoformat(),
-        team=str(member.get("조")),
+        team=str(member.get("조")), member=member,
     )
 
 

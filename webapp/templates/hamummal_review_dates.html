@@ -11,6 +11,9 @@
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
        max-width:480px;margin:40px auto;padding:0 20px;color:#222;background:#fff}
   h1{font-size:19px}
+  .member-header{font-size:19px;font-weight:bold;margin:0 0 6px;line-height:1.4}
+  .flash{color:#c0392b;font-weight:bold;font-size:14px;margin:0 0 12px}
+  .flash.success{color:#0a7a2f}
   .date-list{margin-top:16px}
   .date-link{display:flex;align-items:center;justify-content:space-between;gap:8px;
        padding:12px 14px;border:1px solid #eee;border-radius:10px;margin-bottom:8px;
@@ -30,7 +33,15 @@
 </style>
 </head>
 <body>
+  <p class="member-header">{{ member['이름'] }}님 · {{ member['조'] }} · {{ member['역할'] }}</p>
   <h1>📮 하멈말 결과확인</h1>
+
+  {% with cat_messages = get_flashed_messages(with_categories=true) %}
+    {% if cat_messages %}
+      {% set category, message = cat_messages[0] %}
+      <p class="flash {{ 'success' if category == 'success' else '' }}">{{ message }}</p>
+    {% endif %}
+  {% endwith %}
   <div class="toolbar-links">
     <a class="tool-link" href="{{ url_for('hamummal_review_attendance') }}">📊 출석률 보기</a>
     <a class="tool-link" href="{{ url_for('hamummal_review_bulk_match_page') }}">🔗 조원 이름 일괄 매칭</a>
