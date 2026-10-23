@@ -366,6 +366,10 @@ def hamummal_upload():
 
         try:
             candidate_dates = hamummal_parser.detect_candidate_dates(str(save_path))
+            # 전체 참가자 명단은 날짜/시간대와 무관하게 파일 전체에서 뽑는 값이라,
+            # 날짜마다 다시 훑지 않고 업로드당 한 번만 계산해서 모든 날짜에
+            # 그대로 재사용한다.
+            all_chat_senders_cache = sorted(hamummal_parser.extract_all_chat_participants(str(save_path)))
             date_windows = db_client.get_hamummal_date_windows(cohort_name)
             processed = []
             skipped = []
@@ -384,13 +388,18 @@ def hamummal_upload():
                 eh, em = map(int, win["end"].split(":"))
                 window_start = TZ.localize(datetime(y, mo, d, sh, sm))
                 window_end = TZ.localize(datetime(y, mo, d, eh, em))
-                computed = hamummal_dashboard.compute_review(str(save_path), window_start, window_end, date_str)
+                # 조별 매칭(소리튠 로그인+조회)은 여기서 미리 하지 않는다 — 결과확인/
+                # 출석률/조원일괄매칭 페이지에서 그 조 데이터가 실제로 필요할 때 그
+                # 자리에서 계산해서 캐시해둔다(_fill_team_entry 참고). 그래야 업로드할
+                # 때 "분석할 날짜 수 × 조 수"만큼 소리튠에 로그인하지 않고, 실제로 그
+                # 페이지를 연 조만큼만 로그인하게 된다.
+                extracted = hamummal_dashboard.extract_review_data(str(save_path), window_start, window_end)
                 db_client.save_review(
-                    computed["teams"], date_str, f"{win['start']}~{win['end']}",
-                    submitter_count=computed["submitter_count"],
-                    chat_senders=computed["chat_senders"],
-                    all_chat_senders=computed["all_chat_senders"],
-                    submission_times=computed["submission_times"],
+                    {}, date_str, f"{win['start']}~{win['end']}",
+                    submitter_count=len(extracted["submitters"]),
+                    chat_senders=sorted(extracted["submitters"]),
+                    all_chat_senders=all_chat_senders_cache,
+                    submission_times=extracted["submission_times"],
                 )
                 processed.append(date_str)
         finally:
@@ -559,6 +568,42 @@ def hamummal_review_feedback_admin():
     return render_template("hamummal_feedback_admin.html", feedback_list=feedback_list)
 
 
+def _fill_team_entry(review_id, row: dict, team: str):
+    """
+    결과확인/출석률/조원일괄매칭 세 페이지가 공통으로 쓰는 "이 조 데이터가
+    없으면 그 자리에서 계산해서 캐시해두고 돌려준다" 로직. 업로드 시점엔
+    조별 매칭을 미리 하지 않으므로(extract_review_data 참고), 이 조의 데이터가
+    실제로 필요해지는 순간 처음 한 번만 계산하고, 그 다음부턴 DB에 캐시된
+    값을 그대로 쓴다.
+
+    row는 최소 "review"(dict)/"check_date"/"chat_senders"/"all_chat_senders"/
+    "submission_times" 키를 가진 dict여야 한다(load_review 또는
+    list_team_reviews가 돌려주는 모양). team의 entry가 이미 있으면 그대로
+    돌려주고, 없으면 compute_team_entry로 계산해서 row["review"]와 DB에
+    캐시해두고 돌려준다. 조장/부조장이 아직 아무도 가입 안 해서 계산할 수
+    없으면 None을 돌려주고 캐시하지 않는다(나중에 가입하면 그때 다시
+    시도되도록).
+    """
+    review = row.get("review") or {}
+    if team in review:
+        return review[team]
+    members = db_client.active_members_by_team().get(str(team)) or []
+    entry = hamummal_dashboard.compute_team_entry(
+        team, members, row["check_date"],
+        row.get("chat_senders") or [], _exclude_staff_accounts(row.get("all_chat_senders")),
+        row.get("submission_times") or {},
+    )
+    if entry is None:
+        return None
+    review[team] = entry
+    row["review"] = review
+    try:
+        db_client.update_review_team_entry(review_id, team, entry)
+    except Exception:
+        pass  # 화면엔 바로 반영하고, 저장은 실패해도 다음에 다시 시도하면 됨
+    return entry
+
+
 def _team_attendance(team: str):
     """
     팀의 지금까지 분석된 날짜들을 기준으로, 지금 조원 명단(가장 최근 날짜
@@ -567,12 +612,16 @@ def _team_attendance(team: str):
     들어오는 일이 없으므로 다들 같은 분모를 쓴다).
     """
     rows = db_client.list_team_reviews(team)
-    rows = [r for r in rows if not ((r.get("review") or {}).get(team) or {}).get("error")]
-    total_dates = len(rows)
+    filled = []
+    for row in rows:
+        entry = _fill_team_entry(row["id"], row, team)
+        if entry is None or entry.get("error"):
+            continue
+        filled.append((row, entry))
+    total_dates = len(filled)
 
     stats = {}
-    for row in rows:
-        entry = (row.get("review") or {}).get(team) or {}
+    for row, entry in filled:
         for m in entry.get("matched") or []:
             mid = str(m.get("id"))
             st = stats.setdefault(mid, {"matched": 0, "member": m})
@@ -583,7 +632,7 @@ def _team_attendance(team: str):
             st = stats.setdefault(mid, {"matched": 0, "member": m})
             st["member"] = m
 
-    latest_entry = ((rows[-1].get("review") or {}).get(team) or {}) if rows else {}
+    latest_entry = filled[-1][1] if filled else {}
     latest_ids = {str(m.get("id")) for m in (latest_entry.get("matched") or [])} | \
         {str(m.get("id")) for m in (latest_entry.get("unmatched_members") or [])}
 
@@ -829,7 +878,7 @@ def hamummal_review_roster_status():
     all_raw_names_set = set()
     rows = db_client.list_team_reviews(my_team)
     for row in rows:
-        entry = (row.get("review") or {}).get(my_team) or {}
+        entry = _fill_team_entry(row["id"], row, my_team) or {}
         for m in entry.get("matched") or []:
             raw = m.get("_matched_raw")
             if raw:
@@ -908,7 +957,7 @@ def hamummal_review_bulk_match_reset_all():
         return jsonify(ok=False, error="리셋하지 못했어요. 잠시 후 다시 시도해주세요."), 500
 
     members = db_client.active_members_by_team().get(my_team) or []
-    rows = [r for r in db_client.list_team_reviews(my_team) if my_team in (r.get("review") or {})]
+    rows = db_client.list_team_reviews(my_team)
     dated_rows = [
         (
             r["check_date"], r.get("chat_senders") or [],
@@ -1045,36 +1094,20 @@ def hamummal_review_content(review_id):
     if not data:
         return jsonify(ok=False, error="존재하지 않거나 만료된 검토입니다. 관리자에게 문의해주세요."), 404
 
-    full_review = data["review"]
-    if my_team not in full_review:
-        # 업로드 당시엔 우리 조 조장/부조장이 아직 이 웹앱에 가입 전이라서
-        # 통째로 빠졌을 수 있다 — 그 날짜 제출자 목록과 제출시각 자체는 이미
-        # DB에 저장돼 있으니(chat_senders/all_chat_senders/submission_times),
-        # 지금 시점 기준으로 우리 조 현황판과 다시 매칭해본다. 조장/부조장이
-        # 그 사이에 가입했다면 바로 결과가 나오고(제출시각까지 포함해서), 다음
-        # 부터는 저장해둬서 다시 계산할 필요가 없다.
-        members = db_client.active_members_by_team().get(my_team) or []
-        live_entry = hamummal_dashboard.compute_team_entry(
-            my_team, members, data["check_date"],
-            data.get("chat_senders") or [], _exclude_staff_accounts(data.get("all_chat_senders")),
-            data.get("submission_times") or {},
-        )
-        if live_entry is None:
-            return jsonify(
-                ok=False,
-                error=(
-                    f"이 검토에는 '{my_team}'의 데이터가 없어요. "
-                    "우리 조 조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어서, "
-                    "현황판을 불러올 수가 없어요. 조장 또는 부조장이 로그인한 뒤 다시 들어와 주세요."
-                ),
-            ), 404
-        full_review[my_team] = live_entry
-        try:
-            db_client.update_review_team_entry(review_id, my_team, live_entry)
-        except Exception:
-            pass  # 화면엔 바로 반영하고, 저장은 실패해도 다음에 다시 시도하면 됨
-
-    entry = full_review[my_team]
+    # 업로드 당시엔 조별 매칭을 미리 안 해두므로(extract_review_data 참고),
+    # 이 조 데이터가 아직 없으면 지금 시점 기준으로 그 자리에서 계산해서
+    # 캐시해둔다 — 출석률/조원일괄매칭 페이지와 똑같은 로직(_fill_team_entry)을
+    # 쓴다.
+    entry = _fill_team_entry(review_id, data, my_team)
+    if entry is None:
+        return jsonify(
+            ok=False,
+            error=(
+                f"이 검토에는 '{my_team}'의 데이터가 없어요. "
+                "우리 조 조장/부조장이 아직 이 웹앱(과제체킹)에 로그인한 적이 없어서, "
+                "현황판을 불러올 수가 없어요. 조장 또는 부조장이 로그인한 뒤 다시 들어와 주세요."
+            ),
+        ), 404
 
     # 안전장치: 어떤 경로로든 같은 조원이 제출자/미제출자 양쪽에 동시에 들어가
     # 있거나, 이미 확정된 사람(raw)과 같은 메시지를 놓고 "확인 필요"가 남아
@@ -1246,6 +1279,11 @@ def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
             if new_raw != existing_matched.get("_matched_raw"):
                 if new_raw:
                     existing_matched["_matched_raw"] = new_raw
+                    new_formatted_time = (row.get("submission_times") or {}).get(new_raw)
+                    if new_formatted_time:
+                        existing_matched["_submitted_at"] = new_formatted_time
+                    else:
+                        existing_matched.pop("_submitted_at", None)
                 else:
                     row_entry["matched"] = [
                         m for m in row_entry.get("matched") or [] if str(m.get("id")) != str(member_id)
@@ -1285,6 +1323,9 @@ def _retroactively_apply_other_dates(review_id, team, member_id, display_name):
                     row_entry["ambiguous"] = row_cleaned_ambiguous
 
                     row_target["_matched_raw"] = row_matched_raw
+                    row_formatted_time = (row.get("submission_times") or {}).get(row_matched_raw)
+                    if row_formatted_time:
+                        row_target["_submitted_at"] = row_formatted_time
                     row_entry.setdefault("matched", []).append(row_target)
                     changed = True
 
@@ -1344,6 +1385,9 @@ def hamummal_review_confirm_match(review_id):
                 break
         if target is not None:
             target["_matched_raw"] = raw
+            formatted_time = (data.get("submission_times") or {}).get(raw)
+            if formatted_time:
+                target["_submitted_at"] = formatted_time
             entry["unmatched_members"] = [
                 m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
             ]
@@ -1451,6 +1495,13 @@ def hamummal_review_fix_name(review_id):
         current_matched = matched_raw is not None
         if current_matched:
             target["_matched_raw"] = matched_raw
+            # 이름이 고쳐지면서 원문도 바뀌었으니, 제출시간도 그 원문 기준으로
+            # 다시 찾아서 맞춰준다(안 그러면 예전 원문의 시간이 그대로 남는다).
+            formatted_time = (data.get("submission_times") or {}).get(matched_raw)
+            if formatted_time:
+                target["_submitted_at"] = formatted_time
+            else:
+                target.pop("_submitted_at", None)
         else:
             # 고친 이름으로는 이 날짜에 보낸 메시지를 찾지 못했다 — 지금까지의
             # 매칭이 잘못됐던 것이므로 제출자 목록에서 빼서 미제출로 내려보낸다.
@@ -1467,6 +1518,9 @@ def hamummal_review_fix_name(review_id):
         current_matched = matched_raw is not None
         if current_matched:
             target["_matched_raw"] = matched_raw
+            formatted_time = (data.get("submission_times") or {}).get(matched_raw)
+            if formatted_time:
+                target["_submitted_at"] = formatted_time
             entry["unmatched_members"] = [
                 m for m in entry.get("unmatched_members") or [] if str(m.get("id")) != str(member_id)
             ]

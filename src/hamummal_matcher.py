@@ -97,7 +97,12 @@ def match_submitters(
         name_tokens = _normalize_tokens(m.get("real_name") or "", protect=protect)
         override = (display_name_overrides or {}).get(str(m.get("id")))
         if override:
-            name_tokens = name_tokens | _normalize_tokens(override, protect=protect)
+            # override는 "전체 소통방 명단"에서 그 날짜에 찍힌 그대로(예:
+            # "나오미(3회)") 저장돼 있을 수 있다. raw 쪽은 항상 회차를 뗀 뒤에
+            # 비교하므로, override도 똑같이 회차를 떼야 날짜가 달라져도(회차가
+            # 바뀌거나 없어져도) 계속 같은 사람으로 확신 있게 매칭된다.
+            override_body, _ = _strip_round(override)
+            name_tokens = name_tokens | _normalize_tokens(override_body, protect=protect)
         member_meta[str(m["id"])] = {
             "member": m,
             "nick_tokens": _normalize_tokens(m.get("nickname") or "", protect=protect),

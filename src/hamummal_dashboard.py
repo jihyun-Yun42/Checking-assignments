@@ -8,13 +8,13 @@ def compute_team_entry(
     한 조(team)만 콕 집어서, 그 조 조장/부조장 번호로 소리튠에 로그인해 현황판을
     받아오고 제출자 목록(submitters)과 매칭한 결과를 돌려준다.
 
-    업로드 시점(compute_review)뿐 아니라, 업로드 당시엔 조장/부조장이 아직 이
-    웹앱에 가입 전이라 통째로 빠졌던 조를, 나중에 그 조장/부조장이 가입한 뒤
-    조원이 결과확인 페이지를 열어볼 때 그 자리에서(lazily) 계산할 때도 쓴다 —
-    submitters/all_submitters/submission_times는 그 날짜 업로드 시점에 이미
-    뽑아서 DB에 저장해둔 chat_senders/all_chat_senders/submission_times를 그대로
-    넘기면 되므로, 카카오톡 원본 파일이 없어도(업로드 요청이 끝나면 바로
-    지워버리므로) 다시 계산할 수 있다. submission_times는 {카카오 발신자 이름:
+    업로드 시점에는 조별 매칭을 미리 하지 않는다 — 결과확인/출석률/조원일괄매칭
+    페이지 중 하나에서 그 조 데이터가 실제로 필요해지는 순간, 그 자리에서
+    (lazily) 이 함수로 계산해서 캐시해둔다(webapp/app.py의 _fill_team_entry
+    참고). submitters/all_submitters/submission_times는 그 날짜 업로드 시점에
+    이미 뽑아서 DB에 저장해둔 chat_senders/all_chat_senders/submission_times를
+    그대로 넘기면 되므로, 카카오톡 원본 파일이 없어도(업로드 요청이 끝나면 바로
+    지워버리므로) 계산할 수 있다. submission_times는 {카카오 발신자 이름:
     "HH:MM"} 형태의 이미 포맷된 문자열 딕셔너리를 받는다(호출하는 쪽에서 미리
     포맷해서 넘긴다 — DB에 저장할 때도 이 형태 그대로 저장한다).
 
@@ -146,7 +146,16 @@ def compute_team_entries_for_dates(team: str, members: list, dated_rows: list):
     return results, None
 
 
-def compute_review(txt_path: str, window_start, window_end, check_date_str: str) -> dict:
+def extract_review_data(txt_path: str, window_start, window_end) -> dict:
+    """
+    업로드 시점에 저장해둘, 조와 무관한 날짜별 데이터만 뽑는다(그 날짜 시간대
+    기준 제출자/제출시각). 조별 매칭(compute_team_entry, 소리튠 로그인+조회가
+    필요)은 여기서 하지 않는다 — 결과확인/출석률/조원일괄매칭 페이지가 실제로
+    필요할 때 그 자리에서 계산하고 캐시해둔다. all_chat_senders(전체 참가자
+    명단)는 날짜/시간대와 무관하게 파일 전체에서 한 번만 뽑으면 되므로, 여기서
+    계산하지 않는다 — 호출하는 쪽(hamummal_upload)이 업로드당 한 번만 따로
+    계산해서 모든 날짜에 재사용한다.
+    """
     submitters = hamummal_parser.extract_submitters(txt_path, window_start, window_end)
     # "제출자 목록에 몇 시에 제출했는지" 표시용 — 판정(제출했는지 자체)에는
     # 영향 없고 화면에 보여줄 시각만 따로 뽑는다. 지금 당장 매칭되는 조뿐 아니라
@@ -157,25 +166,7 @@ def compute_review(txt_path: str, window_start, window_end, check_date_str: str)
         sender: hamummal_parser.format_submission_time(ts)
         for sender, ts in hamummal_parser.extract_submission_times(txt_path, window_start, window_end).items()
     }
-    # "이름 고치기" 팝업 검색용 — 날짜/시간, 하멈말 제출 여부 상관없이 파일
-    # 전체에서 한 번이라도 메시지를 보냈거나 입장한 적 있는 모든 사람. 매칭
-    # 판정에는 안 쓰고(그건 위 submitters만 씀), 검색 목록을 넓혀주기 위해서만
-    # 쓴다(텍스트로만 대화하고 하멈말엔 참여 안 한 사람도 여기엔 포함돼야 함).
-    all_submitters = hamummal_parser.extract_all_chat_participants(txt_path)
-
-    result = {}
-    for team, members in db_client.active_members_by_team().items():
-        entry = compute_team_entry(team, members, check_date_str, submitters, all_submitters, submission_times)
-        if entry is not None:
-            result[team] = entry
-
-    return {
-        "teams": result,
-        "submitter_count": len(submitters),
-        "chat_senders": sorted(submitters),
-        "all_chat_senders": sorted(all_submitters),
-        "submission_times": submission_times,
-    }
+    return {"submitters": submitters, "submission_times": submission_times}
 
 
 def apply_review(

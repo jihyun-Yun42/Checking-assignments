@@ -485,23 +485,25 @@ def list_review_dates() -> list:
 
 
 def list_team_reviews(team: str) -> list:
-    # 이 조 데이터가 들어있는 검토를 날짜순으로, 날짜당 가장 최근 업로드 1건씩만
-    # 반환한다. 카카오톡 내보내기 파일은 항상 누적본이라 같은 날짜를 다시
-    # 업로드하면(예: 더 최신 내용으로 다시 분석) 매번 새 row가 추가되는데,
-    # 그 중복 row까지 다 세면 출석률 분모(날짜 수)가 실제 날짜 수보다 부풀고
-    # fix-name도 화면에 안 보이는 옛날 row를 고치게 된다 — 그래서 같은
-    # check_date는 가장 최근 것(created_at 기준) 하나만 남긴다
-    # ("?" 연산자: review jsonb가 team을 top-level 키로 가지고 있는지 검사).
+    # 분석된 날짜를 날짜순으로, 날짜당 가장 최근 업로드 1건씩만 반환한다.
+    # 카카오톡 내보내기 파일은 항상 누적본이라 같은 날짜를 다시 업로드하면
+    # (예: 더 최신 내용으로 다시 분석) 매번 새 row가 추가되는데, 그 중복 row까지
+    # 다 세면 출석률 분모(날짜 수)가 실제 날짜 수보다 부풀고 fix-name도 화면에
+    # 안 보이는 옛날 row를 고치게 된다 — 그래서 같은 check_date는 가장 최근 것
+    # (created_at 기준) 하나만 남긴다.
+    #
+    # team 필터를 두지 않는다 — 업로드 시점엔 조별 매칭을 미리 안 해서, review
+    # jsonb에 team 키가 아직 없는 날짜도 있을 수 있다(결과확인/출석률/조원일괄
+    # 매칭 중 하나를 아직 한 번도 안 열어본 날짜). 그런 날짜도 일단 다 돌려주고,
+    # 호출하는 쪽(_fill_team_entry)이 그 자리에서 계산해서 메꾸게 한다.
     return _query(
         '''
         SELECT DISTINCT ON (check_date)
             id, to_char(check_date, 'YYYY-MM-DD') AS check_date,
-            review, applied_teams, chat_senders, all_chat_senders
+            review, applied_teams, chat_senders, all_chat_senders, submission_times
         FROM hamummal_reviews
-        WHERE review ? %s
         ORDER BY check_date, created_at DESC
-        ''',
-        (str(team),),
+        '''
     )
 
 
